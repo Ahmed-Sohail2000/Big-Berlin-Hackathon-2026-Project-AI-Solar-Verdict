@@ -89,6 +89,15 @@ export async function getBuildingInsights(
     `&key=${encodeURIComponent(getKey())}`;
 
   const controller = new AbortController();
+
+  if (process.env.MOCK_MODE === 'true') {
+    const cached = await loadFixture("solar", lat, lng);
+    return {
+      data: cached,
+      apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
+    };
+  }
+
   const live = fetchJson(url, controller.signal);
 
   const fallback = async (): Promise<unknown> => {
@@ -145,6 +154,14 @@ export async function getDataLayers(
     `&radiusMeters=${radiusMeters}` +
     `&view=FULL_LAYERS` +
     `&key=${encodeURIComponent(getKey())}`;
+
+  if (process.env.MOCK_MODE === 'true') {
+    const cached = await loadFixture("datalayers", lat, lng);
+    return {
+      data: cached,
+      apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
+    };
+  }
 
   const controller = new AbortController();
   const live = fetchJson(url, controller.signal);

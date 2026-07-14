@@ -7,6 +7,15 @@ export async function GET(req: NextRequest) {
   const key = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!q) return NextResponse.json({ error: "missing ?q parameter" }, { status: 400 });
+
+  if (process.env.MOCK_MODE === 'true') {
+    return NextResponse.json({
+      address: "Reichstag, Berlin, Germany",
+      lat: 52.5186,
+      lng: 13.3761,
+    });
+  }
+
   if (!key) return NextResponse.json({ error: "server missing GOOGLE_MAPS_API_KEY" }, { status: 500 });
 
   // No country filter — accept any address worldwide (Solar API will gracefully 404 if no coverage)

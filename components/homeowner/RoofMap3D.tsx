@@ -13,11 +13,18 @@ export function RoofMap3D({ coords, address }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error" | "mock">("idle");
 
   // Initialise the map once, when we first have coords.
   useEffect(() => {
-    if (!apiKey || !coords || mapRef.current || !containerRef.current) return;
+    if (!coords) return;
+
+    if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true') {
+      setStatus("mock");
+      return;
+    }
+
+    if (!apiKey || mapRef.current || !containerRef.current) return;
 
     setStatus("loading");
     setOptions({ key: apiKey, v: "weekly" });
@@ -88,6 +95,15 @@ export function RoofMap3D({ coords, address }: Props) {
             <span className="relative inline-flex h-2 w-2 rounded-md bg-[#62E6A7]" />
           </span>
           Live 3D · drag to rotate
+        </div>
+      )}
+      {status === "mock" && (
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 rounded-md border border-[#3DAEFF]/40 bg-[#0A0E1A]/80 backdrop-blur px-3 py-1.5 text-xs text-[#F7F8FA]">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-md bg-[#3DAEFF] opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-md bg-[#3DAEFF]" />
+          </span>
+          Simulation Mode · 3D View Disabled
         </div>
       )}
       {status === "error" && (

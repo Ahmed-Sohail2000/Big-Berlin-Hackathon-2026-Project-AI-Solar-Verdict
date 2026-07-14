@@ -10,6 +10,15 @@ export async function GET(req: NextRequest) {
   if (!lat || !lng) {
     return NextResponse.json({ error: "missing lat/lng" }, { status: 400 });
   }
+
+  if (process.env.MOCK_MODE === 'true') {
+    return NextResponse.json({
+      address: "Reichstag, Berlin, Germany",
+      lat: 52.5186,
+      lng: 13.3761,
+    });
+  }
+
   if (!key) {
     return NextResponse.json({ error: "server missing GOOGLE_MAPS_API_KEY" }, { status: 500 });
   }

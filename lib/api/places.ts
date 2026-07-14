@@ -102,6 +102,15 @@ export async function placesAutocomplete(
   }
 
   const controller = new AbortController();
+
+  if (process.env.NEXT_PUBLIC_MOCK_MODE === 'true' || process.env.MOCK_MODE === 'true') {
+    const cached = await loadFixture(trimmed);
+    return {
+      predictions: cached ? cached.predictions : [],
+      apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
+    };
+  }
+
   const fetchPromise = fetchLive(trimmed, controller.signal);
 
   const fallback = async (): Promise<PlacesPrediction[]> => {
