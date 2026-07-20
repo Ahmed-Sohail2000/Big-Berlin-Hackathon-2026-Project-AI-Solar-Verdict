@@ -7,7 +7,7 @@ Run the linter to ensure the codebase adheres to the defined project style and q
 
 ## Command
 ```bash
-npm run lint
+pnpm lint
 ```
 
 ## Scope

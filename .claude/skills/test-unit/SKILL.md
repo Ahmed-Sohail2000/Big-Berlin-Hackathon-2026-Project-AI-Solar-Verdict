@@ -7,7 +7,7 @@ Run the unit test suite to verify core logic in `lib/`.
 
 ## Command
 ```bash
-npm run test
+pnpm test
 ```
 
 ## Scope

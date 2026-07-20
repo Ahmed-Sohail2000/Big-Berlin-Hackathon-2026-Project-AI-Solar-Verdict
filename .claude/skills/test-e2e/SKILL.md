@@ -7,7 +7,7 @@ Run the E2E test suite to verify the user flow and UI stability.
 
 ## Command
 ```bash
-npm run test:e2e
+pnpm test:e2e
 ```
 
 ## Scope

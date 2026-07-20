@@ -1,36 +1,27 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. **Read `AGENTS.md` first** — it's the canonical repo map, per-AI ownership table, and hard rules (frozen contracts, locked color tokens, package manager). This file only adds Claude-Code-specific tooling on top of that.
 
-## Common Commands
-- **Development**: `npm run dev` (starts Next.js dev server)
-- **Build**: `npm run build`
-- **Lint**: `npm run lint`
-- **Unit Tests**: `npm run test`
-  - Run a single test: `npm run test <path/to/file.test.ts>`
-- **E2E Tests**: `npm run test:e2e`
-- **Data Pipeline**: `npm run prebake` (CSV $\rightarrow$ JSON) then `npm run prebake:heatmaps` (JSON $\rightarrow$ PNG)
+## Commands
+- **Package manager is pnpm, not npm.** `node_modules` is pnpm-linked (see the `.pnpm` store); running `npm install` here corrupts npm's own dependency resolver. Use `pnpm <script>` for everything (`pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build`).
+- **Data Pipeline**: `pnpm prebake` (CSV $\rightarrow$ JSON) then `pnpm prebake:heatmaps` (JSON $\rightarrow$ PNG) — must run in this order.
 
-## Architecture & Structure
-Verdict is a Next.js 15 application designed for solar energy analysis. The architecture follows a strict separation between UI, API, and Business Logic:
-
-- **`app/` (The Interface Layer)**:
-  - **Pages**: Next.js App Router pages.
-  - **API Routes**: Route handlers in `app/api/` that act as thin wrappers around `lib/api`.
-- **`components/` (The Presentation Layer)**:
-  - Split by user persona: `components/homeowner/` (consumer-facing views) and `components/installer/` (professional analysis tools).
-  - Heavy use of 3D components (Cesium/Three.js) for roof visualization.
-- **`lib/` (The Core Logic Layer)**:
-  - This is where the primary business value resides.
-  - `lib/api/`: Client-side wrappers for external solar and mapping services.
-  - `lib/sizing/`: Core calculations for solar panel sizing and rationale.
-  - `lib/heatmaps/`: Logic for analyzing and generating solar radiation maps.
-  - `lib/cesium/`: Configuration and utilities for the 3D globe.
-- **`data/` (The Persistence/Schema Layer)**:
-  - `data/schema.ts`: Zod definitions that ensure type safety across the API and UI.
-  - `data/fixtures/`: Cached JSON data used to avoid redundant API calls during development.
-
-## Key Technical Details
-- **State Management**: Zustand for global UI state; TanStack Query for server-state synchronization.
-- **Visualization**: Uses CesiumJS for high-precision 3D mapping of rooftops.
+## Architecture Conventions
+- Strict separation between UI, API, and business logic: route handlers in `app/api/` are thin wrappers around `lib/api`; the primary business value resides in `lib/` (panel sizing and rationale in `lib/sizing/`, solar radiation map analysis in `lib/heatmaps/`).
+- `components/` is split by user persona: `components/homeowner/` (consumer-facing views) vs `components/installer/` (professional analysis tools).
+- `data/schema.ts` holds the Zod definitions that ensure type safety across the API and UI; `data/fixtures/` caches JSON to avoid redundant external API calls during development.
 - **Data Flow**: External API $\rightarrow$ `lib/api` $\rightarrow$ `app/api` $\rightarrow$ `TanStack Query` $\rightarrow$ `Components`.
+
+## Skills
+Project skills in `.claude/skills/` (invoke via `/skill-name`; read the SKILL.md for the full recipe):
+- `run-verdict` — launch the dev server and smoke-test both pages via Playwright
+- `bake-data` — regenerate `data/fixtures/` and heatmap PNGs from source CSVs
+- `lint` / `test-unit` / `test-e2e` — scoped checks
+- `ci-verify` — the full lint+unit+e2e gate before pushing
+
+## Sub-agents
+Two scoped sub-agents live in `.claude/agents/`, split along the frontend/backend seam:
+- **frontend-agent** — `app/**/page.tsx`, `components/**`, `lib/cesium/**`. Cannot touch `app/api/**` or `lib/api/**`.
+- **backend-agent** — `app/api/**`, `lib/api/**`, `lib/sizing/**`, `lib/reonic/**`, `lib/leads/**`, `data/schema.ts`. Owns input validation and endpoint security; always tests with `MOCK_MODE=true` (every wrapper in `lib/api/` already branches on this env var to serve a cached fixture instead of a live call).
+
+Both agents are restricted to `Read, Edit, Grep, Glob, Bash` — no `WebFetch`/`WebSearch`/MCP tools, and neither can spawn further agents. Two project hooks in `.claude/settings.json` back this up mechanically: a `PreToolUse` guard blocks any Bash command referencing a live Verdict external API (Solar/Places/Gemini/Tavily) unless `MOCK_MODE=true` is part of the same command, and a `PostToolUse` hook auto-lints any file just edited under `app/api/` or `lib/api/` so backend regressions surface immediately instead of at the next full `pnpm lint` pass.

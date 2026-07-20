@@ -8,11 +8,11 @@ Process raw data into the required JSON formats and generate heatmap images.
 ## Commands
 1. **Convert CSV to JSON**:
    ```bash
-   npm run prebake
+   pnpm prebake
    ```
 2. **Bake Heatmaps**:
    ```bash
-   npm run prebake:heatmaps
+   pnpm prebake:heatmaps
    ```
 
 ## Scope
