@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +10,7 @@ export async function GET(req: NextRequest) {
   if (!q) return NextResponse.json({ error: "missing ?q parameter" }, { status: 400 });
 
   if (process.env.MOCK_MODE === 'true') {
-    return NextResponse.json({
-      address: "Reichstag, Berlin, Germany",
-      lat: 52.5186,
-      lng: 13.3761,
-    });
+    return NextResponse.json(MOCK_GEOCODE_RESULT);
   }
 
   if (!key) return NextResponse.json({ error: "server missing GOOGLE_MAPS_API_KEY" }, { status: 500 });

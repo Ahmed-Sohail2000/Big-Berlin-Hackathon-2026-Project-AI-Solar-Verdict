@@ -83,13 +83,6 @@ export async function getBuildingInsights(
   lat: number,
   lng: number,
 ): Promise<SolarApiResult> {
-  const url =
-    `${BUILDING_INSIGHTS_ENDPOINT}?location.latitude=${lat}` +
-    `&location.longitude=${lng}` +
-    `&key=${encodeURIComponent(getKey())}`;
-
-  const controller = new AbortController();
-
   if (process.env.MOCK_MODE === 'true') {
     const cached = await loadFixture("solar", lat, lng);
     return {
@@ -97,6 +90,13 @@ export async function getBuildingInsights(
       apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
     };
   }
+
+  const url =
+    `${BUILDING_INSIGHTS_ENDPOINT}?location.latitude=${lat}` +
+    `&location.longitude=${lng}` +
+    `&key=${encodeURIComponent(getKey())}`;
+
+  const controller = new AbortController();
 
   const live = fetchJson(url, controller.signal);
 
@@ -148,13 +148,6 @@ export async function getDataLayers(
   lng: number,
   radiusMeters: number = DEFAULT_DATA_LAYERS_RADIUS_METERS,
 ): Promise<SolarApiResult> {
-  const url =
-    `${DATA_LAYERS_ENDPOINT}?location.latitude=${lat}` +
-    `&location.longitude=${lng}` +
-    `&radiusMeters=${radiusMeters}` +
-    `&view=FULL_LAYERS` +
-    `&key=${encodeURIComponent(getKey())}`;
-
   if (process.env.MOCK_MODE === 'true') {
     const cached = await loadFixture("datalayers", lat, lng);
     return {
@@ -162,6 +155,13 @@ export async function getDataLayers(
       apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
     };
   }
+
+  const url =
+    `${DATA_LAYERS_ENDPOINT}?location.latitude=${lat}` +
+    `&location.longitude=${lng}` +
+    `&radiusMeters=${radiusMeters}` +
+    `&view=FULL_LAYERS` +
+    `&key=${encodeURIComponent(getKey())}`;
 
   const controller = new AbortController();
   const live = fetchJson(url, controller.signal);

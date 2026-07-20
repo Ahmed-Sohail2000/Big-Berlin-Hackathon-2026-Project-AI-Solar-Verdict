@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (process.env.MOCK_MODE === 'true') {
-    return NextResponse.json({
-      address: "Reichstag, Berlin, Germany",
-      lat: 52.5186,
-      lng: 13.3761,
-    });
+    return NextResponse.json(MOCK_GEOCODE_RESULT);
   }
 
   if (!key) {

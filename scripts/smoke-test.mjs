@@ -1,5 +1,5 @@
 
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 
 (async () => {
   console.log('Launching browser...');
