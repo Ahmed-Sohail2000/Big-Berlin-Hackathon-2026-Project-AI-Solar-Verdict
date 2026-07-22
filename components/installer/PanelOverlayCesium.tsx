@@ -66,6 +66,15 @@ interface Props {
    *  Used by the plane-fit so manual panels tilt with the dominant roof
    *  slope rather than rendering flat at the picked mesh height. */
   defaultPitchDegrees?: number;
+  /** Solar API roof segments with centers. Used to infer the clicked roof
+   *  plane for manually-placed panels instead of falling back to the dominant
+   *  whole-roof segment. */
+  roofSegments?: Array<{
+    pitchDegrees?: number;
+    azimuthDegrees?: number;
+    planeHeightAtCenterMeters?: number;
+    center?: { latitude?: number; longitude?: number };
+  }>;
 }
 
 // Real-world residential panel dimensions. Default to a 440 Wp M10 module
@@ -78,9 +87,11 @@ const PANEL_DIMS = {
   PORTRAIT: { wM: 1.13, hM: 1.72 },
 } as const;
 
-const PANEL_HEIGHT_OFFSET_M = 0.15; // hover ~15 cm above the roof plane
+const PANEL_HEIGHT_OFFSET_M = 0.45; // lift clear of photoreal mesh depth noise
 const PANEL_THICKNESS_M = 0.05;
+const FLAT_SEGMENT_PITCH_DEGREES = 5;
 const ENTITY_NAME_PREFIX = "panel-";
+const MANUAL_ENTITY_NAME_PREFIX = "manual-";
 
 const ACTIVE_COLOR = "#3DAEFF";       // AI-placed, active
 const REMOVED_COLOR = "#F2B84B";      // toggled off (obstruction)
@@ -88,6 +99,70 @@ const MANUAL_COLOR = "#62E6A7";       // manually placed by installer
 
 export function panelKey(idx: number, lat: number, lng: number): string {
   return `${ENTITY_NAME_PREFIX}${idx}-${lat.toFixed(6)}-${lng.toFixed(6)}`;
+}
+
+function isPanelEntityName(name: unknown): name is string {
+  return (
+    typeof name === "string" &&
+    (name.startsWith(ENTITY_NAME_PREFIX) ||
+      name.startsWith(MANUAL_ENTITY_NAME_PREFIX))
+  );
+}
+
+function distanceMeters2(
+  latA: number,
+  lngA: number,
+  latB: number,
+  lngB: number,
+): number {
+  const meanLat = ((latA + latB) / 2) * Math.PI / 180;
+  const safeCosLat = Math.max(1e-6, Math.abs(Math.cos(meanLat)));
+  const dN = (latA - latB) * 111_320;
+  const dE = (lngA - lngB) * 111_320 * safeCosLat;
+  return dN * dN + dE * dE;
+}
+
+function nearestRoofSegment(
+  lat: number,
+  lng: number,
+  segments: NonNullable<Props["roofSegments"]>,
+): { index: number; segment: NonNullable<Props["roofSegments"]>[number]; distance2: number } | null {
+  let best:
+    | { index: number; segment: NonNullable<Props["roofSegments"]>[number]; distance2: number }
+    | null = null;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const segLat = segment.center?.latitude;
+    const segLng = segment.center?.longitude;
+    if (!Number.isFinite(segLat) || !Number.isFinite(segLng)) continue;
+    const distance2 = distanceMeters2(lat, lng, segLat as number, segLng as number);
+    if (!best || distance2 < best.distance2) {
+      best = { index, segment, distance2 };
+    }
+  }
+  return best;
+}
+
+function segmentAnchorHeightForPickedPoint(
+  pickedLat: number,
+  pickedLng: number,
+  segLat: number,
+  segLng: number,
+  pickedHeight: number,
+  pitchDeg: number,
+  azimuthDeg: number,
+): number {
+  if (!Number.isFinite(pickedHeight) || pitchDeg <= 0.5) return pickedHeight;
+  const tanPitch = Math.tan((pitchDeg * Math.PI) / 180);
+  const azRad = (azimuthDeg * Math.PI) / 180;
+  const downE = Math.sin(azRad);
+  const downN = Math.cos(azRad);
+  const cosLat = Math.cos((segLat * Math.PI) / 180);
+  const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : cosLat;
+  const dE = (pickedLng - segLng) * 111_320 * safeCosLat;
+  const dN = (pickedLat - segLat) * 111_320;
+  const downhillDist = dE * downE + dN * downN;
+  return pickedHeight + tanPitch * downhillDist;
 }
 
 /**
@@ -182,10 +257,9 @@ function panelCorners(
 
 /**
  * Snap AI panels onto clean horizontal rows aligned with each roof segment's
- * ridge, preserving Google's along-row spacing so chimneys, dormers,
- * skylights, and other obstructions Google already routed around stay
- * routed-around. Conservative by design: we only snap V (down-slope index)
- * — U (along-ridge position) is left exactly where Google placed it.
+ * ridge. We snap V globally into rows, then snap U only inside tight clusters
+ * within a row so small Solar API center jitter disappears while wider gaps
+ * around chimneys, dormers, skylights, and other obstructions are preserved.
  *
  * Visual effect: rows line up across the roof; gaps within a row stay where
  * Google left them. Manual panels (segmentIndex = -1) are skipped entirely
@@ -233,31 +307,84 @@ function snapPanelsToGrid(panels: SolarPanelEntry[]): SolarPanelEntry[] {
     const ridgeN = -Math.sin(azRad);
     const cosLat = Math.cos((segLat * Math.PI) / 180);
     const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : cosLat;
+    const orientationCounts = segPanels.reduce(
+      (acc, p) => {
+        acc[p.orientation] = (acc[p.orientation] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<SolarPanelEntry["orientation"], number>,
+    );
+    const dominantOrientation =
+      (orientationCounts.PORTRAIT ?? 0) > (orientationCounts.LANDSCAPE ?? 0)
+        ? "PORTRAIT"
+        : "LANDSCAPE";
+    const rowSpacingM = PANEL_DIMS[dominantOrientation].hM + 0.05;
 
+    interface GridPanel {
+      panel: SolarPanelEntry;
+      dims: (typeof PANEL_DIMS)[keyof typeof PANEL_DIMS];
+      u: number;
+      vIdx: number;
+    }
+
+    const rows = new Map<number, GridPanel[]>();
     for (const p of segPanels) {
       const dims = PANEL_DIMS[p.orientation] ?? PANEL_DIMS.LANDSCAPE;
-      // Row pitch (down-slope) is one panel-height + 5 cm visual gap. We do
-      // NOT step U because that's where Google's obstruction avoidance lives.
-      const cellV = dims.hM + 0.05;
-
       const dE = (p.center.longitude - segLng) * 111_320 * safeCosLat;
       const dN = (p.center.latitude - segLat) * 111_320;
       const u = dE * ridgeE + dN * ridgeN;
       const v = dE * downE + dN * downN;
 
-      const vIdx = Math.round(v / cellV);
-      const vS = vIdx * cellV;
-      // U stays exactly where Google placed it — preserves panel-sized gaps
-      // around chimneys/skylights along the row.
-      const dE_s = u * ridgeE + vS * downE;
-      const dN_s = u * ridgeN + vS * downN;
-      const newLat = segLat + dN_s / 111_320;
-      const newLng = segLng + dE_s / (111_320 * safeCosLat);
+      const vIdx = Math.round(v / rowSpacingM);
+      const row = rows.get(vIdx) ?? [];
+      row.push({ panel: p, dims, u, vIdx });
+      rows.set(vIdx, row);
+    }
 
-      out.set(p, {
-        ...p,
-        center: { latitude: newLat, longitude: newLng },
-      });
+    for (const row of rows.values()) {
+      row.sort((a, b) => a.u - b.u);
+
+      const runs: GridPanel[][] = [];
+      let currentRun: GridPanel[] = [];
+      for (const item of row) {
+        const prev = currentRun[currentRun.length - 1];
+        if (!prev) {
+          currentRun.push(item);
+          continue;
+        }
+
+        const gap = item.u - prev.u;
+        const clusterThreshold = 1.3 * Math.max(prev.dims.wM, item.dims.wM);
+        if (gap <= clusterThreshold) {
+          currentRun.push(item);
+        } else {
+          runs.push(currentRun);
+          currentRun = [item];
+        }
+      }
+      if (currentRun.length > 0) runs.push(currentRun);
+
+      for (const run of runs) {
+        const avgPanelWidth =
+          run.reduce((sum, item) => sum + item.dims.wM, 0) / run.length;
+        const runCenterU =
+          run.reduce((sum, item) => sum + item.u, 0) / run.length;
+        const startU = runCenterU - ((run.length - 1) * avgPanelWidth) / 2;
+
+        run.forEach((item, runIdx) => {
+          const uS = run.length === 1 ? item.u : startU + runIdx * avgPanelWidth;
+          const vS = item.vIdx * rowSpacingM;
+          const dE_s = uS * ridgeE + vS * downE;
+          const dN_s = uS * ridgeN + vS * downN;
+          const newLat = segLat + dN_s / 111_320;
+          const newLng = segLng + dE_s / (111_320 * safeCosLat);
+
+          out.set(item.panel, {
+            ...item.panel,
+            center: { latitude: newLat, longitude: newLng },
+          });
+        });
+      }
     }
   }
 
@@ -277,7 +404,7 @@ function clearPanelEntities(viewer: CesiumViewer): void {
   // Iterate over a copy because removeById mutates the underlying array.
   const toRemove = entities.filter(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (e: any) => typeof e?.name === "string" && e.name.startsWith(ENTITY_NAME_PREFIX),
+    (e: any) => isPanelEntityName(e?.name),
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toRemove.forEach((e: any) => {
@@ -300,6 +427,7 @@ export function PanelOverlayCesium({
   onPanelAdd,
   defaultAzimuthDegrees = 0,
   defaultPitchDegrees = 0,
+  roofSegments = [],
 }: Props) {
   // Stash the latest callbacks + edit-mode flag in refs so the
   // ScreenSpaceEventHandler — which is keyed only on `viewer` — always reads
@@ -309,6 +437,9 @@ export function PanelOverlayCesium({
   const onPanelAddRef = useRef<((panel: SolarPanelEntry) => void) | undefined>(onPanelAdd);
   const defaultAzimuthRef = useRef(defaultAzimuthDegrees);
   const defaultPitchRef = useRef(defaultPitchDegrees);
+  const roofSegmentsRef = useRef(roofSegments);
+  const calibratedSegmentHeightsRef = useRef<Map<number, number> | undefined>(undefined);
+  const calibratedSignatureRef = useRef<string>("");
 
   useEffect(() => {
     onClickRef.current = onPanelClick;
@@ -325,6 +456,9 @@ export function PanelOverlayCesium({
   useEffect(() => {
     defaultPitchRef.current = defaultPitchDegrees;
   }, [defaultPitchDegrees]);
+  useEffect(() => {
+    roofSegmentsRef.current = roofSegments;
+  }, [roofSegments]);
 
   // -------------------------------------------------------------------------
   // Render panel polygons.
@@ -337,8 +471,9 @@ export function PanelOverlayCesium({
   //
   //   • Snap input panels onto clean rows (snapPanelsToGrid above) so the
   //     visual layout reads as an actual install, not Google's scatter.
-  //   • Phase 1 (sync): render with Solar API heights. Wrong altitude but the
-  //     user sees the layout instantly.
+  //   • Phase 1 (sync): render with the last calibrated mesh heights when
+  //     available; otherwise use Solar API heights until the first sample
+  //     pass finishes.
   //   • Phase 2 (async, after 1.5 s): sample the photoreal mesh at each
   //     UNIQUE SEGMENT CENTER (not each panel — segment centers are
   //     guaranteed to be on roof per Solar API; panel centers might fall
@@ -417,11 +552,12 @@ export function PanelOverlayCesium({
         const anchorHeight = Number.isFinite(meshHeight)
           ? (meshHeight as number)
           : solarHeight;
+        const renderPitch = Math.abs(pitch) < FLAT_SEGMENT_PITCH_DEGREES ? 0 : pitch;
 
         const flatHeights: number[] = [];
         for (const c of corners) {
           const h =
-            planeFitHeight(c.lat, c.lng, segLat, segLng, anchorHeight, pitch, azimuth) +
+            planeFitHeight(c.lat, c.lng, segLat, segLng, anchorHeight, renderPitch, azimuth) +
             PANEL_HEIGHT_OFFSET_M;
           flatHeights.push(c.lng, c.lat, h);
         }
@@ -473,8 +609,40 @@ export function PanelOverlayCesium({
       const Cesium: any = await import("cesium");
       if (cancelled || !viewer || viewer.isDestroyed?.()) return;
 
-      // Phase 1: render with Solar API heights so the user sees something fast.
-      renderPanels(Cesium);
+      const initialSeen = new Set<number>();
+      const initialSignature = panels
+        .filter((p) => {
+          if (
+            p.segmentIndex < 0 ||
+            initialSeen.has(p.segmentIndex) ||
+            !Number.isFinite(p.segmentCenterLat) ||
+            !Number.isFinite(p.segmentCenterLng)
+          ) {
+            return false;
+          }
+          initialSeen.add(p.segmentIndex);
+          return true;
+        })
+        .map(
+          (p) =>
+            `${p.segmentIndex}:${(p.segmentCenterLat as number).toFixed(6)},${(
+              p.segmentCenterLng as number
+            ).toFixed(6)}`,
+        )
+        .join("|");
+      if (
+        initialSignature &&
+        calibratedSignatureRef.current &&
+        calibratedSignatureRef.current !== initialSignature
+      ) {
+        calibratedSegmentHeightsRef.current = undefined;
+      }
+
+      // Phase 1: render immediately. After the first successful mesh sample,
+      // reuse the calibrated segment heights on later React re-renders so
+      // panels do not briefly fall back to Solar API orthometric heights
+      // below the photoreal mesh.
+      renderPanels(Cesium, calibratedSegmentHeightsRef.current);
 
       if (!visible || desiredCount <= 0 || panels.length === 0) return;
 
@@ -509,8 +677,15 @@ export function PanelOverlayCesium({
         });
       }
       if (segSamples.length === 0) return;
+      const sampleSignature = segSamples
+        .map((s) => `${s.segIndex}:${s.lat.toFixed(6)},${s.lng.toFixed(6)}`)
+        .join("|");
+      if (calibratedSignatureRef.current !== sampleSignature) {
+        calibratedSegmentHeightsRef.current = undefined;
+        calibratedSignatureRef.current = sampleSignature;
+      }
 
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, calibratedSegmentHeightsRef.current ? 500 : 1500));
       if (cancelled || !viewer || viewer.isDestroyed?.()) return;
 
       try {
@@ -518,8 +693,20 @@ export function PanelOverlayCesium({
         const carts = segSamples.map((s) =>
           Cesium.Cartographic.fromDegrees(s.lng, s.lat),
         );
-        const result = await viewer.scene.sampleHeightMostDetailed(carts);
+        let result = await viewer.scene.sampleHeightMostDetailed(carts);
         if (cancelled || !viewer || viewer.isDestroyed?.()) return;
+        let finiteCount = result.filter((r: { height?: number } | undefined) =>
+          Number.isFinite(r?.height),
+        ).length;
+        if (finiteCount === 0 && !calibratedSegmentHeightsRef.current) {
+          await new Promise((r) => setTimeout(r, 2000));
+          if (cancelled || !viewer || viewer.isDestroyed?.()) return;
+          result = await viewer.scene.sampleHeightMostDetailed(carts);
+          if (cancelled || !viewer || viewer.isDestroyed?.()) return;
+          finiteCount = result.filter((r: { height?: number } | undefined) =>
+            Number.isFinite(r?.height),
+          ).length;
+        }
 
         // Pass 1: derive a global geoid offset from any single trusted sample.
         // We pick the LARGEST (segment with highest planeHeight is most
@@ -555,6 +742,8 @@ export function PanelOverlayCesium({
           }
         });
 
+        calibratedSegmentHeightsRef.current = segHeightMap;
+        calibratedSignatureRef.current = sampleSignature;
         renderPanels(Cesium, segHeightMap);
       } catch {
         // Sampling can throw if the scene tears down mid-await; phase-1
@@ -563,11 +752,16 @@ export function PanelOverlayCesium({
     })();
 
     return () => {
+      // Don't clearPanelEntities() here. The render effect's body already
+      // calls clearPanelEntities() at the start of every renderPanels() pass
+      // BEFORE adding the new entity batch — atomic clear+add. If we ALSO
+      // wipe entities in the cleanup, every dep change leaves a visible
+      // window where the user sees no panels while the new effect's
+      // `await import("cesium")` resolves. That window manifests as the
+      // "panels sometimes show, sometimes not" flicker the user reported.
+      // Final unmount cleanup is handled by a separate useEffect below
+      // (the one keyed only on `viewer`).
       cancelled = true;
-      if (viewer && !viewer.isDestroyed?.()) {
-        clearPanelEntities(viewer);
-        viewer.scene?.requestRender?.();
-      }
     };
   }, [viewer, panels, desiredCount, removedKeys, visible]);
 
@@ -600,7 +794,7 @@ export function PanelOverlayCesium({
             const picked = viewer.scene.pick(event.position);
             const name: unknown = picked?.id?.name;
             // Hit an existing panel polygon → toggle remove
-            if (typeof name === "string" && name.startsWith(ENTITY_NAME_PREFIX)) {
+            if (isPanelEntityName(name)) {
               onClickRef.current(name);
               return;
             }
@@ -612,19 +806,39 @@ export function PanelOverlayCesium({
             const cartographic = Cesium.Cartographic.fromCartesian(worldPos);
             const lat = Cesium.Math.toDegrees(cartographic.latitude);
             const lng = Cesium.Math.toDegrees(cartographic.longitude);
+            const nearest = nearestRoofSegment(lat, lng, roofSegmentsRef.current);
+            const nearestSegment = nearest?.segment;
+            const segmentCenterLat = nearestSegment?.center?.latitude;
+            const segmentCenterLng = nearestSegment?.center?.longitude;
+            const segmentAzimuthDegrees =
+              nearestSegment?.azimuthDegrees ?? defaultAzimuthRef.current;
+            const segmentPitchDegrees =
+              nearestSegment?.pitchDegrees ?? defaultPitchRef.current;
+            const hasSegmentCenter =
+              Number.isFinite(segmentCenterLat) && Number.isFinite(segmentCenterLng);
+            const anchorLat = hasSegmentCenter ? (segmentCenterLat as number) : lat;
+            const anchorLng = hasSegmentCenter ? (segmentCenterLng as number) : lng;
             const newPanel: SolarPanelEntry = {
               center: { latitude: lat, longitude: lng },
               orientation: "LANDSCAPE",
               segmentIndex: -1,
               yearlyEnergyDcKwh: 0,
-              segmentAzimuthDegrees: defaultAzimuthRef.current,
-              segmentPitchDegrees: defaultPitchRef.current,
-              // Anchor the plane at the panel's own center so plane-fit passes
-              // through the picked mesh height; corners tilt around it using
-              // the dominant pitch/azimuth.
-              segmentCenterLat: lat,
-              segmentCenterLng: lng,
-              segmentHeightMeters: cartographic.height,
+              segmentAzimuthDegrees,
+              segmentPitchDegrees,
+              // Anchor the plane at the nearest Solar API segment center, but
+              // solve the anchor height so the plane still passes through the
+              // clicked mesh point.
+              segmentCenterLat: anchorLat,
+              segmentCenterLng: anchorLng,
+              segmentHeightMeters: segmentAnchorHeightForPickedPoint(
+                lat,
+                lng,
+                anchorLat,
+                anchorLng,
+                cartographic.height,
+                segmentPitchDegrees,
+                segmentAzimuthDegrees,
+              ),
               manual: true,
             };
             onPanelAddRef.current(newPanel);

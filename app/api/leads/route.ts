@@ -42,6 +42,14 @@ const CreateLeadSchema = z.object({
   wantsHeatPump: PreferenceSchema.optional(),
   gridType: GridTypeSchema.optional(),
   roofSegments: z.array(LenientRoofSegmentSchema).optional(),
+  // Gradium voice memo recorded on the intake page — stored in privateDetails.
+  voiceNote: z
+    .object({
+      audioDataUrl: z.string().min(1),
+      transcript: z.string().optional(),
+      durationMs: z.number().nonnegative().optional(),
+    })
+    .optional(),
 });
 
 export async function GET() {
