@@ -61,7 +61,7 @@ export function SegmentBreakdown({
           Per-segment placement
         </h2>
         <span className="text-[11px] tabular-nums text-[#5B6470]">
-          {totalPanels} panels · {totalSystemKwp.toFixed(1)} kWp · {mpptStringCount} MPPT strings
+          {totalPanels} panels · {totalSystemKwp.toFixed(1)} kWp · {mpptStringCount} MPPT string{mpptStringCount === 1 ? "" : "s"}
         </span>
       </div>
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
+  ChevronDown,
   Eye,
   EyeOff,
   Lock,
@@ -15,18 +16,22 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
-import type { BoM, Intake, RoofSegment, Strategy, Variant } from "@/lib/contracts";
+import type { GridType, Intake, RoofSegment, Strategy, Variant } from "@/lib/contracts";
 import type { LeadRecord } from "@/lib/leads/store";
-import { sizeQuote, type SizingResultWithAllocations } from "@/lib/sizing/calculate";
+import {
+  allocatePanelsToSegments,
+  sizeQuote,
+  type SizingResultWithAllocations,
+} from "@/lib/sizing/calculate";
 import {
   composeFromMarket,
   type SizingResultWithMarket,
   type VariantSourceUrls,
 } from "@/lib/sizing/compose-from-market";
 import { CesiumRoofView } from "@/components/homeowner/CesiumRoofView";
+import { BillOfMaterials } from "@/components/installer/BillOfMaterials";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
-import { SourceUrlChip } from "@/components/installer/SourceUrlChip";
 import {
   PanelOverlayCesium,
   panelKey,
@@ -47,6 +52,7 @@ interface RoofFactsResponse {
     planeHeightAtCenterMeters?: number;
   }>;
   totalAreaM2?: number;
+  source?: "live" | "cached" | "mock";
   solarPanels?: Array<{
     center: { latitude: number; longitude: number };
     orientation: "LANDSCAPE" | "PORTRAIT";
@@ -71,58 +77,12 @@ function formatTime(iso?: string): string {
   }).format(new Date(iso));
 }
 
-interface BomLine {
-  label: string;
-  value: string;
-  sourceUrl?: string;
-}
-
-function bomLines(bom: BoM, urls?: VariantSourceUrls): BomLine[] {
-  const lines: BomLine[] = [
-    {
-      label: "Panels",
-      value: `${bom.panels.brand} ${bom.panels.model} x${bom.panels.count} · ${(
-        (bom.panels.count * bom.panels.wp) /
-        1000
-      ).toFixed(1)} kWp`,
-      sourceUrl: urls?.panel,
-    },
-    {
-      label: "Inverter",
-      value: `${bom.inverter.brand} ${bom.inverter.model} · ${bom.inverter.kw} kW`,
-      sourceUrl: urls?.inverter,
-    },
-  ];
-  if (bom.battery) {
-    lines.push({
-      label: "Battery",
-      value: `${bom.battery.brand} ${bom.battery.model} · ${bom.battery.kwh} kWh`,
-      sourceUrl: urls?.battery,
-    });
-  }
-  if (bom.wallbox) {
-    lines.push({
-      label: "Wallbox",
-      value: `${bom.wallbox.brand} ${bom.wallbox.model} · ${bom.wallbox.kw} kW`,
-      sourceUrl: urls?.wallbox,
-    });
-  }
-  if (bom.heatPump) {
-    lines.push({
-      label: "Heat pump",
-      value: `${bom.heatPump.brand} ${bom.heatPump.model} · ${bom.heatPump.kw} kW`,
-      sourceUrl: urls?.heatPump,
-    });
-  }
-  if (urls?.mount) {
-    lines.push({
-      label: "Mount",
-      value: "per-panel mounting hardware",
-      sourceUrl: urls.mount,
-    });
-  }
-  return lines;
-}
+/** Display labels for the grid connection type (read-only from intake). */
+const GRID_TYPE_LABEL: Record<GridType, string> = {
+  on_grid: "On-grid",
+  off_grid: "Off-grid",
+  hybrid: "Hybrid",
+};
 
 type AzimuthBucket = "E" | "SE" | "S" | "SW" | "W" | "N" | "flat";
 
@@ -189,6 +149,7 @@ function intakeFromLead(lead: LeadRecord): Intake {
     evPref: prefs.evPref,
     wantsBattery: prefs.wantsBattery,
     wantsHeatPump: prefs.wantsHeatPump,
+    gridType: prefs.gridType,
     heating: prefs.heating as Intake["heating"],
     goal,
   };
@@ -203,6 +164,9 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const [liveSegments, setLiveSegments] = useState<RoofSegment[] | null>(null);
   const [liveLoading, setLiveLoading] = useState(true);
   const [liveError, setLiveError] = useState(false);
+  // Actual data source reported by /api/roof-facts. The badges must reflect
+  // this honestly (hard rule: Live/Cached badge never lies about the source).
+  const [liveSource, setLiveSource] = useState<"live" | "cached" | "mock" | null>(null);
 
   // Cesium-overlay state. Viewer comes from CesiumRoofView via the
   // onViewerReady callback. solarPanels arrives from /api/roof-facts (Google's
@@ -255,6 +219,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     let cancelled = false;
     setLiveLoading(true);
     setLiveError(false);
+    setLiveSource(null);
     // Reset overlay state when the lead identity changes — different building,
     // different panels, no carry-over removals or manual additions.
     setSolarPanels([]);
@@ -308,6 +273,24 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           return;
         }
 
+        // The per-segment placement table must agree with the BoM the
+        // installer sees, which is anchored to the panel count the homeowner
+        // was quoted (lead.publicPreview). The market composer doesn't emit
+        // allocations at all, and the sizeQuote fallback allocates its own
+        // (possibly larger) count — recompute against the anchored count so
+        // every displayed number tells the same story.
+        try {
+          const anchorCount = lead.publicPreview.sizing.panelCount;
+          const allocations = allocatePanelsToSegments(segments, anchorCount);
+          sizing.segmentAllocations = allocations;
+          sizing.mpptStringCount = new Set(
+            allocations.filter((a) => a.status === "used").map((a) => a.stringId),
+          ).size;
+        } catch (allocErr) {
+          console.warn("allocatePanelsToSegments failed", allocErr);
+        }
+
+        setLiveSource(data.source ?? null);
         setLiveSizing(sizing);
         setLiveSegments(segments);
         setLiveTotalAreaM2(typeof data.totalAreaM2 === "number" ? data.totalAreaM2 : null);
@@ -502,9 +485,49 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const selectedSourceUrls: VariantSourceUrls | undefined =
     liveSizing?.sourceUrls?.[selectedVariant.strategy as Strategy];
 
-  const lines = useMemo(
-    () => bomLines(selectedVariant.bom, selectedSourceUrls),
-    [selectedVariant.bom, selectedSourceUrls],
+  // ---- Sell-ready proposal numbers (client-side, from existing fields) ----
+  // Grid type: read-only from intake when the lead carries it (additive
+  // contract field). Falls back to the German residential default "On-grid".
+  const gridType: GridType =
+    (lead as typeof lead & { intake?: { gridType?: GridType } }).intake?.gridType ??
+    (
+      lead.publicPreview.preferences as typeof lead.publicPreview.preferences & {
+        gridType?: GridType;
+      }
+    ).gridType ??
+    "on_grid";
+  const gridTypeLabel = GRID_TYPE_LABEL[gridType];
+
+  // Simple 25-year ROI from existing Variant fields only:
+  // lifetime savings = monthlySavingsEur × 12 × 25, vs the installed total.
+  const lifetimeSavingsEur = selectedVariant.monthlySavingsEur * 12 * 25;
+  const roiPct =
+    selectedVariant.bom.totalEur > 0
+      ? Math.round(
+          ((lifetimeSavingsEur - selectedVariant.bom.totalEur) /
+            selectedVariant.bom.totalEur) *
+            100,
+        )
+      : 0;
+
+  // Estimated annual yield: prefer the live per-panel sum (respects the
+  // installer's panel edits), then the per-segment allocation sum, then the
+  // sizer's headline yield. All are existing deterministic outputs.
+  const allocationYieldKwh = (liveSizing?.segmentAllocations ?? [])
+    .filter((a) => a.status === "used" && !disabledSegmentIndexes.has(a.index))
+    .reduce((sum, a) => sum + a.yieldKwhPerYear, 0);
+  const estAnnualYieldKwh = Math.round(
+    activeYieldKwh > 0
+      ? activeYieldKwh
+      : allocationYieldKwh > 0
+        ? allocationYieldKwh
+        : liveSizing?.annualYieldKwh ?? lead.publicPreview.sizing.annualYieldKwh,
+  );
+
+  // Compact per-face placement summary for the design card. The full
+  // toggleable table (SegmentBreakdown) stays in the technical section.
+  const placementSummary = (liveSizing?.segmentAllocations ?? []).filter(
+    (a) => a.status === "used",
   );
 
   const roofAreaValue =
@@ -688,8 +711,206 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         ) : null}
       </section>
 
-      <section className="flex flex-1 flex-col gap-5 overflow-y-auto p-5 xl:p-6">
-        <div className="flex flex-col gap-5">
+      <section className="grid flex-1 gap-5 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:p-6">
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* 1 · System design summary — the headline an installer reads to a
+              customer: size, hardware, yield, grid type, roof faces. */}
+          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-[#F7F8FA]">System design</h2>
+                <span className="rounded-md border border-[#3DAEFF]/40 bg-[#3DAEFF]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#3DAEFF]">
+                  {gridTypeLabel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#5B6470]">
+                {liveLoading ? (
+                  <>
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#3DAEFF]" />
+                    Recomputing live
+                  </>
+                ) : liveError ? (
+                  <span className="text-[#5B6470]">Using cached sizing</span>
+                ) : liveSource === "live" ? (
+                  <span className="text-[#62E6A7]">Live Solar API</span>
+                ) : (
+                  <span className="text-[#F2B84B]">
+                    {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <p className="text-sm leading-snug text-[#9BA3AF]">
+              <span className="font-semibold text-[#F7F8FA]">{systemKwp} kWp</span> ·{" "}
+              {panelCount} × {selectedVariant.bom.panels.brand}{" "}
+              {selectedVariant.bom.panels.model} ({selectedVariant.bom.panels.wp} Wp)
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+              {[
+                { label: "System size", value: `${systemKwp} kWp` },
+                {
+                  label: "Panels",
+                  value: `${panelCount} × ${selectedVariant.bom.panels.wp} Wp`,
+                },
+                {
+                  label: "Est. annual yield",
+                  value: `${estAnnualYieldKwh.toLocaleString()} kWh`,
+                },
+                { label: "Roof", value: `${Math.round(roofAreaValue)} m² · ${pitchValue}°` },
+              ].map((kpi) => (
+                <div
+                  key={kpi.label}
+                  className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-1.5"
+                >
+                  <div className="text-[9px] uppercase tracking-wider text-[#5B6470]">
+                    {kpi.label}
+                  </div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#F7F8FA]">
+                    {kpi.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {placementSummary.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="uppercase tracking-wider text-[#5B6470]">Placement</span>
+                {placementSummary.map((row) => {
+                  const off = disabledSegmentIndexes.has(row.index);
+                  return (
+                    <span
+                      key={row.index}
+                      className={`rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 tabular-nums ${
+                        off ? "text-[#5B6470] line-through" : "text-[#F7F8FA]"
+                      }`}
+                    >
+                      {row.azimuthBucket === "flat" ? "Flat" : row.azimuthBucket}{" "}
+                      {Math.round(row.azimuthDegrees)}° · {row.panelsAllocated} panels
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+
+          {/* 2 · Financial proposal — the selling numbers for the selected
+              strategy, computed client-side from existing Variant fields. */}
+          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-[#F7F8FA]">Financial proposal</h2>
+              <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
+                €{selectedVariant.bom.totalEur.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              {variants.map((variant) => (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => setSelectedVariantId(variant.id)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    variant.id === selectedVariant.id
+                      ? "border-[#3DAEFF] bg-[#3DAEFF]/10"
+                      : "border-[#2A3038] bg-[#0A0E1A] hover:border-[#3DAEFF]/50"
+                  }`}
+                >
+                  <div className="text-sm font-semibold text-[#F7F8FA]">{variant.label}</div>
+                  <div className="mt-1 text-xs text-[#9BA3AF]">
+                    €{variant.monthlySavingsEur}/mo · {variant.paybackYears} yrs
+                  </div>
+                  <div className="mt-2 text-[11px] text-[#5B6470]">
+                    {variant.marginPct}% margin · {variant.winRatePct}% win
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+              {[
+                {
+                  label: "Total price",
+                  value: `€${selectedVariant.bom.totalEur.toLocaleString()}`,
+                },
+                {
+                  label: "Monthly savings",
+                  value: `€${selectedVariant.monthlySavingsEur.toLocaleString()}/mo`,
+                },
+                { label: "Payback", value: `${selectedVariant.paybackYears} yrs` },
+                { label: "25-yr ROI", value: `${roiPct >= 0 ? "+" : ""}${roiPct}%` },
+                { label: "Margin", value: `${selectedVariant.marginPct}%` },
+                { label: "Win rate", value: `${selectedVariant.winRatePct}%` },
+              ].map((kpi) => (
+                <div
+                  key={kpi.label}
+                  className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-1.5"
+                >
+                  <div className="text-[9px] uppercase tracking-wider text-[#5B6470]">
+                    {kpi.label}
+                  </div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#F7F8FA]">
+                    {kpi.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-2 text-[11px] leading-snug text-[#5B6470]">
+              25-yr ROI compares €{selectedVariant.monthlySavingsEur.toLocaleString()}/mo × 12
+              × 25 (€{lifetimeSavingsEur.toLocaleString()} lifetime savings) against the
+              installed total.
+            </p>
+
+            {/* Active-panel status. Lives under the metrics so the installer
+                immediately sees the consequence of removing a panel — €/mo
+                and payback above also update via the yield scale. */}
+            {sizerPanelCount > 0 || manuallyAddedPanels.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#5B6470]">
+                <span>
+                  <span className="text-[#3DAEFF] tabular-nums">AI {sizerPanelCount}</span>
+                  {manuallyAddedPanels.length > 0 ? (
+                    <span className="text-[#62E6A7] tabular-nums"> · +{manuallyAddedPanels.length} manual</span>
+                  ) : null}
+                  {removedPanelKeys.size > 0 ? (
+                    <span className="text-[#F2B84B] tabular-nums"> · −{removedPanelKeys.size} removed</span>
+                  ) : null}
+                </span>
+                <span className="text-[#F7F8FA]">
+                  = <span className="tabular-nums">{activePanelCount}</span> active
+                </span>
+                <span>· Click roof in 3D view to add/remove.</span>
+              </div>
+            ) : null}
+          </section>
+
+          {/* 3 · Full bill of materials for the selected variant. */}
+          <BillOfMaterials bom={selectedVariant.bom} sourceUrls={selectedSourceUrls} />
+
+          {/* Tavily / market-catalog attribution badge */}
+          {liveSizing?.catalogScrapedAt ? (
+            <div className="rounded-md border border-[#2A3038] bg-[#12161C] px-3 py-2 text-[11px] text-[#9BA3AF]">
+              Live German solar market — scraped{" "}
+              <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>{" "}
+              via Tavily
+              {liveSizing.catalogSource ? (
+                <span className="text-[#5B6470]"> ({liveSizing.catalogSource})</span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* 4 · Technical detail — collapsible, open by default so the
+              engineering evidence stays one glance away from the proposal. */}
+          <details open className="group rounded-lg border border-[#2A3038] bg-[#12161C]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-xs font-semibold uppercase tracking-wider text-[#9BA3AF] [&::-webkit-details-marker]:hidden">
+              Technical detail · roof intelligence &amp; placement
+              <ChevronDown
+                size={14}
+                className="text-[#5B6470] transition-transform group-open:rotate-180"
+              />
+            </summary>
+            <div className="flex flex-col gap-5 border-t border-[#2A3038] p-4">
           {/* AI-prefetched technical brief card */}
           <section className="rounded-lg border border-[#3DAEFF]/30 bg-gradient-to-br from-[#12161C] to-[#0A0E1A] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -707,8 +928,12 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                   </>
                 ) : liveError ? (
                   <span className="text-[#5B6470]">Using cached brief</span>
-                ) : (
+                ) : liveSource === "live" ? (
                   <span className="text-[#62E6A7]">Live Solar API</span>
+                ) : (
+                  <span className="text-[#F2B84B]">
+                    {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
+                  </span>
                 )}
               </div>
             </div>
@@ -745,8 +970,12 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                 </>
               ) : liveError ? (
                 <span className="text-[#5B6470]">Using cached sizing</span>
-              ) : (
+              ) : liveSource === "live" ? (
                 <span className="text-[#62E6A7]">Live Solar API</span>
+              ) : (
+                <span className="text-[#F2B84B]">
+                  {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
+                </span>
               )}
             </div>
           </div>
@@ -765,96 +994,59 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             ))}
           </div>
 
-          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
-                AI-recommended BoM
-              </h2>
-              <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
-                €{selectedVariant.bom.totalEur.toLocaleString()}
-              </span>
-            </div>
-            <div className="grid gap-2 md:grid-cols-3">
-              {variants.map((variant) => (
-                <button
-                  key={variant.id}
-                  type="button"
-                  onClick={() => setSelectedVariantId(variant.id)}
-                  className={`rounded-lg border p-3 text-left transition-colors ${
-                    variant.id === selectedVariant.id
-                      ? "border-[#3DAEFF] bg-[#3DAEFF]/10"
-                      : "border-[#2A3038] bg-[#0A0E1A] hover:border-[#3DAEFF]/50"
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-[#F7F8FA]">{variant.label}</div>
-                  <div className="mt-1 text-xs text-[#9BA3AF]">
-                    €{variant.monthlySavingsEur}/mo · {variant.paybackYears} yrs
-                  </div>
-                  <div className="mt-2 text-[11px] text-[#5B6470]">
-                    {variant.marginPct}% margin · {variant.winRatePct}% win
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Active-panel status. Lives under the variant cards so the
-                installer immediately sees the consequence of removing a
-                panel — €/mo and payback above also update via panelScale. */}
-            {sizerPanelCount > 0 || manuallyAddedPanels.length > 0 ? (
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#5B6470]">
-                <span>
-                  <span className="text-[#3DAEFF] tabular-nums">AI {sizerPanelCount}</span>
-                  {manuallyAddedPanels.length > 0 ? (
-                    <span className="text-[#62E6A7] tabular-nums"> · +{manuallyAddedPanels.length} manual</span>
-                  ) : null}
-                  {removedPanelKeys.size > 0 ? (
-                    <span className="text-[#F2B84B] tabular-nums"> · −{removedPanelKeys.size} removed</span>
-                  ) : null}
-                </span>
-                <span className="text-[#F7F8FA]">
-                  = <span className="tabular-nums">{activePanelCount}</span> active
-                </span>
-                <span>· Click roof in 3D view to add/remove.</span>
-              </div>
-            ) : null}
-
-            <div className="mt-4 divide-y divide-[#2A3038] rounded-lg border border-[#2A3038] bg-[#0A0E1A]">
-              {lines.map((line) => (
-                <div
-                  key={line.label}
-                  className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
-                >
-                  <span className="text-[11px] uppercase tracking-wider text-[#9BA3AF]">
-                    {line.label}
-                  </span>
-                  <div className="flex flex-col items-start gap-1.5 sm:items-end">
-                    <span className="text-right text-sm text-[#F7F8FA]">{line.value}</span>
-                    {line.sourceUrl ? <SourceUrlChip url={line.sourceUrl} /> : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          {liveSizing && (
+            <SegmentBreakdown
+              rows={liveSizing.segmentAllocations ?? []}
+              totalPanels={leadPanelCount}
+              totalSystemKwp={Math.round(leadPanelCount * PANEL_KWP * 10) / 10}
+              mpptStringCount={liveSizing.mpptStringCount ?? 1}
+              disabledSegmentIndexes={disabledSegmentIndexes}
+              onToggleSegment={toggleSegment}
+            />
+          )}
 
           <PanelLayoutPreview
             segments={segmentsForLayout}
             panelCount={selectedVariant.bom.panels.count}
           />
-
-          {/* Tavily / market-catalog attribution badge */}
-          {liveSizing?.catalogScrapedAt ? (
-            <div className="rounded-md border border-[#2A3038] bg-[#12161C] px-3 py-2 text-[11px] text-[#9BA3AF]">
-              Live German solar market — scraped{" "}
-              <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>{" "}
-              via Tavily
-              {liveSizing.catalogSource ? (
-                <span className="text-[#5B6470]"> ({liveSizing.catalogSource})</span>
-              ) : null}
             </div>
-          ) : null}
+          </details>
         </div>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-0">
+          {/* Deal-flow stepper: marketplace → review → accept → offer. Keeps
+              the accept/approve path obvious next to the proposal. */}
+          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
+              Deal flow
+            </h2>
+            <ol className="flex flex-col gap-2">
+              {[
+                { label: "Review AI proposal", done: true },
+                { label: "Accept lead to unlock customer", done: unlocked },
+                {
+                  label: "Send offer to homeowner",
+                  done: lead.status === "offer_sent" || lead.status === "closed",
+                },
+              ].map((step, i) => (
+                <li key={step.label} className="flex items-center gap-2 text-xs">
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] tabular-nums ${
+                      step.done
+                        ? "border-[#62E6A7]/40 bg-[#62E6A7]/10 text-[#62E6A7]"
+                        : "border-[#2A3038] bg-[#0A0E1A] text-[#9BA3AF]"
+                    }`}
+                  >
+                    {step.done ? <Check size={11} /> : i + 1}
+                  </span>
+                  <span className={step.done ? "text-[#F7F8FA]" : "text-[#9BA3AF]"}>
+                    {step.label}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
+
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
@@ -926,16 +1118,6 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
 
             {notice ? <div className="mt-3 text-xs text-[#9BA3AF]">{notice}</div> : null}
           </section>
-          {liveSizing && (
-            <SegmentBreakdown
-              rows={liveSizing.segmentAllocations ?? []}
-              totalPanels={liveSizing.panelCount}
-              totalSystemKwp={liveSizing.systemKwp}
-              mpptStringCount={liveSizing.mpptStringCount ?? 1}
-              disabledSegmentIndexes={disabledSegmentIndexes}
-              onToggleSegment={toggleSegment}
-            />
-          )}
         </aside>
       </section>
     </div>
