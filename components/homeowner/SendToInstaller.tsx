@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Send, Check } from "lucide-react";
-import type { Goal, Heating, Preference, RoofSegment } from "@/lib/contracts";
+import type { Goal, GridType, Heating, Preference, RoofSegment } from "@/lib/contracts";
 
 interface Props {
   address: string;
@@ -17,6 +17,8 @@ interface Props {
     wantsBattery?: Preference;
     /** Three-state heat pump preference (new homeowner UI). */
     wantsHeatPump?: Preference;
+    /** Grid connection type (new homeowner UI). */
+    gridType?: GridType;
     heating: Heating;
     goal: Goal;
   };
@@ -48,6 +50,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
           evPref: intake.evPref,
           wantsBattery: intake.wantsBattery,
           wantsHeatPump: intake.wantsHeatPump,
+          gridType: intake.gridType,
           heating: intake.heating,
           goal: intake.goal,
           roofSegments,

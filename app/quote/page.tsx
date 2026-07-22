@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getResidentialTariff } from "@/lib/api/tavily";
+import { getBuildingInsights } from "@/lib/api/solar";
+import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
 import { sizeQuoteWithRationale } from "@/lib/sizing/calculate";
 import { VariantCardStack } from "@/components/homeowner/VariantCardStack";
 import { SendToInstaller } from "@/components/homeowner/SendToInstaller";
@@ -24,6 +26,7 @@ interface SearchParams {
   wantsBattery?: string;
   wantsHeatPump?: string;
   annualKwh?: string;
+  gridType?: string;
 }
 
 interface GeocodeOk {
@@ -32,7 +35,19 @@ interface GeocodeOk {
   formattedAddress: string;
 }
 
-async function geocode(address: string, key: string): Promise<GeocodeOk | null> {
+async function geocode(address: string, key: string | undefined): Promise<GeocodeOk | null> {
+  // MOCK_MODE resolves every query to the fixture location, matching the
+  // /api/forward-geocode behavior — this keeps the fixture-backed chain
+  // (geocode → getBuildingInsights → sizing) returning real data offline.
+  if (process.env.MOCK_MODE === "true") {
+    return {
+      lat: MOCK_GEOCODE_RESULT.lat,
+      lng: MOCK_GEOCODE_RESULT.lng,
+      formattedAddress: MOCK_GEOCODE_RESULT.address,
+    };
+  }
+  if (!key) return null;
+
   // No country filter — global coverage
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${key}`;
   try {
@@ -51,25 +66,38 @@ async function geocode(address: string, key: string): Promise<GeocodeOk | null> 
   }
 }
 
-async function getRoofSegments(lat: number, lng: number, key: string): Promise<RoofSegment[]> {
-  const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${key}`;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000), cache: "no-store" });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const segs = data?.solarPotential?.roofSegmentStats ?? [];
-    return segs.map((s: {
+interface RoofMeasurement {
+  segments: RoofSegment[];
+  source: "live" | "cached" | "mock";
+}
+
+interface BuildingInsightsLite {
+  solarPotential?: {
+    roofSegmentStats?: Array<{
       pitchDegrees?: number;
       azimuthDegrees?: number;
       stats?: { areaMeters2?: number; sunshineQuantiles?: number[] };
-    }) => ({
-      pitchDegrees: s.pitchDegrees ?? 0,
-      azimuthDegrees: s.azimuthDegrees ?? 180,
-      areaMeters2: s.stats?.areaMeters2 ?? 0,
-      annualSunshineHours: s.stats?.sunshineQuantiles?.[5] ?? 1000,
-    }));
+    }>;
+  };
+}
+
+async function getRoofMeasurement(lat: number, lng: number): Promise<RoofMeasurement> {
+  // Goes through lib/api/solar so MOCK_MODE fixtures, the 4s timeout, and the
+  // cached fallback all apply — identical behavior to /api/roof-facts.
+  try {
+    const { data, apiStatus } = await getBuildingInsights(lat, lng);
+    const segs = (data as BuildingInsightsLite | null)?.solarPotential?.roofSegmentStats ?? [];
+    return {
+      segments: segs.map((s) => ({
+        pitchDegrees: s.pitchDegrees ?? 0,
+        azimuthDegrees: s.azimuthDegrees ?? 180,
+        areaMeters2: s.stats?.areaMeters2 ?? 0,
+        annualSunshineHours: s.stats?.sunshineQuantiles?.[5] ?? 1000,
+      })),
+      source: apiStatus.source,
+    };
   } catch {
-    return [];
+    return { segments: [], source: "mock" };
   }
 }
 
@@ -98,7 +126,7 @@ export default async function QuotePage({
   const params = await searchParams;
   const key = process.env.GOOGLE_MAPS_API_KEY;
 
-  if (!params.address || !key) {
+  if (!params.address) {
     return (
       <main className="min-h-dvh bg-[#0A0E1A] text-[#F7F8FA] flex flex-col items-center justify-center px-6 py-12">
         <h1 className="text-2xl font-semibold mb-2">Missing address</h1>
@@ -120,9 +148,17 @@ export default async function QuotePage({
     areaMeters2: 60,
     annualSunshineHours: 1100,
   };
-  const measuredSegments = geo ? await getRoofSegments(geo.lat, geo.lng, key) : [];
-  const hasLiveSolarMeasurement = measuredSegments.length > 0;
-  const segmentsForSizing = hasLiveSolarMeasurement ? measuredSegments : [fallbackSegment];
+  const measurement = geo
+    ? await getRoofMeasurement(geo.lat, geo.lng)
+    : { segments: [] as RoofSegment[], source: "mock" as const };
+  const measuredSegments = measurement.segments;
+  const hasSolarMeasurement = measuredSegments.length > 0;
+  const segmentsForSizing = hasSolarMeasurement ? measuredSegments : [fallbackSegment];
+  const measurementLabel = !hasSolarMeasurement
+    ? "Estimated (Solar API has no coverage here)"
+    : measurement.source === "live"
+      ? "Measured live"
+      : "Measured (cached simulation data)";
 
   const evPref = asPref(params.evPref, params.ev === "true" ? "yes" : "idk");
   const wantsBattery = asPref(params.wantsBattery);
@@ -139,6 +175,7 @@ export default async function QuotePage({
     evPref,
     wantsBattery,
     wantsHeatPump,
+    gridType: params.gridType === "off_grid" || params.gridType === "hybrid" ? params.gridType : "on_grid",
     heating: (params.heating ?? "gas") as Intake["heating"],
     goal: (params.goal ?? "lower_bill") as Intake["goal"],
   };
@@ -163,9 +200,19 @@ export default async function QuotePage({
         {/* Address + intake summary */}
         <header className="flex flex-col gap-2">
           <div className="flex items-center gap-2 text-xs">
-            <span className="flex items-center gap-1.5 rounded border border-[#62E6A7]/40 bg-[#0A0E1A] px-2 py-0.5 text-[#62E6A7]">
-              <span className="h-1.5 w-1.5 rounded-md bg-[#62E6A7]" />
-              {hasLiveSolarMeasurement ? "Measured live" : "Estimated (Solar API has no coverage here)"}
+            <span
+              className={`flex items-center gap-1.5 rounded border bg-[#0A0E1A] px-2 py-0.5 ${
+                measurement.source === "live" && hasSolarMeasurement
+                  ? "border-[#62E6A7]/40 text-[#62E6A7]"
+                  : "border-[#F2B84B]/40 text-[#F2B84B]"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-md ${
+                  measurement.source === "live" && hasSolarMeasurement ? "bg-[#62E6A7]" : "bg-[#F2B84B]"
+                }`}
+              />
+              {measurementLabel}
             </span>
             <span className="text-[#5B6470]">·</span>
             <span className="text-[#9BA3AF] truncate">{intake.address}</span>
@@ -195,6 +242,7 @@ export default async function QuotePage({
             evPref: intake.evPref,
             wantsBattery: intake.wantsBattery,
             wantsHeatPump: intake.wantsHeatPump,
+            gridType: intake.gridType,
             heating: intake.heating,
             goal: intake.goal,
           }}

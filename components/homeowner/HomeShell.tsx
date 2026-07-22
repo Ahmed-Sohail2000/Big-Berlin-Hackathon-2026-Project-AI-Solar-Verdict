@@ -50,18 +50,8 @@ export function HomeShell() {
   }, [coords]);
 
   return (
-    <main className="relative min-h-dvh bg-[#0A0E1A] text-[#F7F8FA] flex flex-col">
-      {/* Top nav */}
-      <nav className="flex items-center justify-between px-6 py-5 sm:px-10 z-30 bg-[#0A0E1A]/80 backdrop-blur">
-        <span className="text-base font-semibold tracking-tight">Verdict</span>
-        <a
-          href="/installer"
-          className="text-sm text-[#9BA3AF] hover:text-[#F7F8FA] transition-colors"
-        >
-          For installers
-        </a>
-      </nav>
-
+    <div className="relative min-h-[calc(100dvh-64px)] bg-[#0A0E1A] text-[#F7F8FA] flex flex-col">
+      {/* Nav is owned by the landing page (app/page.tsx) — HomeShell renders only the two-pane app. */}
       {/* Two-pane: 3D / satellite roof left, intake right */}
       <section className="flex-1 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-0">
         {/* LEFT */}
@@ -100,7 +90,7 @@ export function HomeShell() {
         </div>
 
         {/* RIGHT */}
-        <div className="flex flex-col px-6 sm:px-10 lg:px-12 py-6 lg:py-8 overflow-y-auto lg:max-h-[calc(100dvh-72px)]">
+        <div className="flex flex-col px-6 sm:px-10 lg:px-12 py-6 lg:py-8 overflow-y-auto lg:max-h-[calc(100dvh-64px)]">
           <IntakePanel
             onLocate={(c, a) => {
               setCoords(c);
@@ -112,6 +102,6 @@ export function HomeShell() {
 
       {/* Push notification when installer approves the lead (polls every 2s) */}
       <InstallerApprovedToast />
-    </main>
+    </div>
   );
 }

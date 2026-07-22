@@ -1,16 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import type { Preference } from "@/lib/contracts";
+import type { GridType, Preference } from "@/lib/contracts";
 import { tryParseCoords } from "@/lib/parse-coords";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 
-type ConsumptionMode = "kwh" | "bill";
+type BillPeriod = "month" | "year";
 
 const PREF_OPTIONS: { value: Preference; label: string }[] = [
   { value: "yes", label: "Yes" },
   { value: "no", label: "No" },
   { value: "idk", label: "Not sure" },
+];
+
+const GRID_OPTIONS: { value: GridType; title: string; description: string }[] = [
+  {
+    value: "on_grid",
+    title: "On-grid (recommended)",
+    description:
+      "Connected to the public grid — export surplus power for feed-in payment. The standard German setup.",
+  },
+  {
+    value: "hybrid",
+    title: "Hybrid",
+    description:
+      "Grid-connected with a battery — keep power during outages, use more of your own solar.",
+  },
+  {
+    value: "off_grid",
+    title: "Off-grid",
+    description: "Fully independent — needs a large battery bank. For remote homes.",
+  },
 ];
 
 interface Props {
@@ -19,9 +39,10 @@ interface Props {
 
 export function IntakePanel({ onLocate }: Props = {}) {
   const [address, setAddress] = useState("");
-  const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>("bill");
+  const [billPeriod, setBillPeriod] = useState<BillPeriod>("month");
+  const [billValue, setBillValue] = useState<string>("");
   const [annualKwh, setAnnualKwh] = useState<string>("");
-  const [annualBill, setMonthlyBill] = useState<string>("");
+  const [gridType, setGridType] = useState<GridType>("on_grid");
   const [wantsBattery, setWantsBattery] = useState<Preference>("idk");
   const [wantsHeatPump, setWantsHeatPump] = useState<Preference>("idk");
   const [evPref, setEvPref] = useState<Preference>("idk");
@@ -108,26 +129,25 @@ export function IntakePanel({ onLocate }: Props = {}) {
     }
   };
 
-  // Validation: address + at least one consumption value (the active mode's value)
-  const consumptionFilled =
-    consumptionMode === "kwh"
-      ? Number(annualKwh) > 0
-      : Number(annualBill) > 0;
-  const canSubmit = address.trim().length > 0 && consumptionFilled;
-
-  // Both inputs are now per-year. Derive monthly bill (legacy field) by /12 when in bill mode,
-  // or from annualKwh × 0.32 / 12 when in kWh mode.
+  // Validation: address + at least one consumption value (bill, or the optional annual kWh)
+  const billNum = Number(billValue);
+  const kwhNum = Number(annualKwh);
+  const canSubmit = address.trim().length > 0 && (billNum > 0 || kwhNum > 0);
 
   const submit = () => {
     if (!canSubmit) return;
     // Internally still set heating + goal (defaults) — lib/contracts.ts requires them.
-    // Translate consumption mode → annualBillEur (always send a numeric bill).
-    // If the user picked kWh, derive a synthetic monthly bill from annualKwh × 0.32 / 12
-    // so the legacy field is populated; the new annualKwh field is also passed through.
+    // The contract field is monthlyBillEur, so the bill input is normalized to a
+    // monthly figure: "per month" passes through as-is, "per year" divides by 12.
+    // If only the optional annual kWh was filled, derive a synthetic monthly bill
+    // from annualKwh × 0.32 €/kWh ÷ 12 so the legacy field stays populated; the
+    // explicit annualKwh is passed through too and takes precedence in sizing.
     const derivedMonthlyBill =
-      consumptionMode === "bill"
-        ? Math.round(Number(annualBill) / 12)
-        : Math.round((Number(annualKwh) * 0.32) / 12);
+      billNum > 0
+        ? billPeriod === "year"
+          ? Math.round(billNum / 12)
+          : Math.round(billNum)
+        : Math.round((kwhNum * 0.32) / 12);
     const params = new URLSearchParams({
       address,
       bill: String(derivedMonthlyBill || 120),
@@ -137,9 +157,10 @@ export function IntakePanel({ onLocate }: Props = {}) {
       evPref,
       wantsBattery,
       wantsHeatPump,
+      gridType,
     });
-    if (consumptionMode === "kwh" && Number(annualKwh) > 0) {
-      params.set("annualKwh", String(Number(annualKwh)));
+    if (kwhNum > 0) {
+      params.set("annualKwh", String(kwhNum));
     }
     window.location.href = `/quote?${params.toString()}`;
   };
@@ -148,9 +169,9 @@ export function IntakePanel({ onLocate }: Props = {}) {
     <div className="flex flex-col gap-4">
       {/* Hero copy — compact */}
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl sm:text-2xl lg:text-[26px] font-semibold leading-tight tracking-tight">
+        <h2 className="text-xl sm:text-2xl lg:text-[26px] font-semibold leading-tight tracking-tight">
           Your home can earn more than you&rsquo;re losing on energy.
-        </h1>
+        </h2>
         <p className="text-xs sm:text-sm text-[#9BA3AF]">
           Based on 1,277 real Reonic projects.
         </p>
@@ -195,84 +216,127 @@ export function IntakePanel({ onLocate }: Props = {}) {
         )}
       </div>
 
-      {/* Consumption — toggle between kWh/year OR monthly bill (€) */}
+      {/* Electricity bill (€) — guided, with a per month / per year toggle */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-            Consumption
-          </span>
+          <label htmlFor="bill" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+            Electricity bill
+          </label>
           <div
             role="radiogroup"
-            aria-label="Consumption input mode"
+            aria-label="Bill period"
             className="flex rounded-lg border border-[#2A3038] overflow-hidden"
           >
             <button
               type="button"
               role="radio"
-              aria-checked={consumptionMode === "bill"}
-              onClick={() => setConsumptionMode("bill")}
+              aria-checked={billPeriod === "month"}
+              onClick={() => setBillPeriod("month")}
               className={`px-3 py-1 text-[11px] transition-colors ${
-                consumptionMode === "bill"
+                billPeriod === "month"
                   ? "bg-[#3DAEFF] text-[#0A0E1A]"
                   : "text-[#9BA3AF] hover:text-[#F7F8FA]"
               }`}
             >
-              € / year
+              per month
             </button>
             <button
               type="button"
               role="radio"
-              aria-checked={consumptionMode === "kwh"}
-              onClick={() => setConsumptionMode("kwh")}
+              aria-checked={billPeriod === "year"}
+              onClick={() => setBillPeriod("year")}
               className={`px-3 py-1 text-[11px] transition-colors ${
-                consumptionMode === "kwh"
+                billPeriod === "year"
                   ? "bg-[#3DAEFF] text-[#0A0E1A]"
                   : "text-[#9BA3AF] hover:text-[#F7F8FA]"
               }`}
             >
-              kWh / year
+              per year
             </button>
           </div>
         </div>
 
-        {consumptionMode === "bill" ? (
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5B6470]">
-              €
-            </span>
-            <input
-              id="bill"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={5}
-              value={annualBill}
-              onChange={(e) => setMonthlyBill(e.target.value)}
-              placeholder="120"
-              className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] pl-7 pr-16 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
-              / month
-            </span>
-          </div>
-        ) : (
-          <div className="relative">
-            <input
-              id="kwh"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={100}
-              value={annualKwh}
-              onChange={(e) => setAnnualKwh(e.target.value)}
-              placeholder="4500"
-              className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
-              kWh / yr
-            </span>
-          </div>
-        )}
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5B6470]">
+            €
+          </span>
+          <input
+            id="bill"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={5}
+            value={billValue}
+            onChange={(e) => setBillValue(e.target.value)}
+            placeholder={billPeriod === "month" ? "120" : "1440"}
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] pl-7 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            / {billPeriod}
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          It&rsquo;s on your electricity bill (Stromrechnung) &mdash; the total &euro; amount you pay.
+        </p>
+      </div>
+
+      {/* Optional annual kWh — improves sizing accuracy */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="kwh" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Annual consumption <span className="normal-case text-[#5B6470]">(optional)</span>
+        </label>
+        <div className="relative">
+          <input
+            id="kwh"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={100}
+            value={annualKwh}
+            onChange={(e) => setAnnualKwh(e.target.value)}
+            placeholder="4500"
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            kWh / yr
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          Optional: total kWh per year &mdash; also on your bill. Improves sizing accuracy.
+        </p>
+      </div>
+
+      {/* Grid connection type */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Grid connection
+        </span>
+        <div role="radiogroup" aria-label="Grid connection" className="flex flex-col gap-2">
+          {GRID_OPTIONS.map((opt) => {
+            const active = gridType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setGridType(opt.value)}
+                className={`flex flex-col gap-0.5 rounded-lg border px-4 py-2.5 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 ${
+                  active
+                    ? "border-[#3DAEFF] bg-[#3DAEFF]/10"
+                    : "border-[#2A3038] bg-[#12161C] hover:border-[#3DAEFF]/40"
+                }`}
+              >
+                <span className={`text-sm font-medium ${active ? "text-[#F7F8FA]" : "text-[#9BA3AF]"}`}>
+                  {opt.title}
+                </span>
+                <span className="text-[11px] leading-relaxed text-[#5B6470]">
+                  {opt.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Three preference fields: battery, heat pump, EV */}
