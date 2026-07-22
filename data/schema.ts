@@ -3,6 +3,7 @@ import { z } from "zod";
 export const HeatingSchema = z.enum(["gas", "oil", "district", "heat_pump", "electric"]);
 export const GoalSchema = z.enum(["lower_bill", "independence"]);
 export const StrategySchema = z.enum(["margin", "closeRate", "ltv"]);
+export const GridTypeSchema = z.enum(["on_grid", "off_grid", "hybrid"]);
 
 export const IntakeSchema = z.object({
   address: z.string().min(1),
@@ -11,6 +12,7 @@ export const IntakeSchema = z.object({
   monthlyBillEur: z.number().positive(),
   annualKwh: z.number().positive().optional(),
   ev: z.boolean(),
+  gridType: GridTypeSchema.optional(),
   heating: HeatingSchema,
   goal: GoalSchema,
 });

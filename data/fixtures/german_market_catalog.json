@@ -1,7 +1,25 @@
 {
-  "scrapedAt": "2026-04-26T07:12:57.857Z",
-  "source": "tavily+gemini+fallback",
+  "scrapedAt": "2026-07-23T09:00:00.000Z",
+  "source": "tavily+gemini+manual-refresh-2026-07",
   "panels": [
+    {
+      "brand": "Aiko",
+      "model": "Neostar 2S+ Full Black 455Wp",
+      "wp": 455,
+      "eurEx": 205,
+      "currency": "EUR",
+      "sourceUrl": "https://aikosolar.com/en/products/neostar-2s/",
+      "sourceTitle": "Aiko Neostar 2S+ ABC Full Black 455W (23.8% efficiency, premium tier)"
+    },
+    {
+      "brand": "Jinko Solar",
+      "model": "Tiger Neo 450Wp N-type TOPCon",
+      "wp": 450,
+      "eurEx": 158,
+      "currency": "EUR",
+      "sourceUrl": "https://www.jinkosolar.eu/",
+      "sourceTitle": "Jinko Tiger Neo N-type TOPCon 450W (mid price)"
+    },
     {
       "brand": "Trina",
       "model": "Vertex S+ Residential NEG9R.28",
@@ -22,12 +40,12 @@
     },
     {
       "brand": "Meyer Burger",
-      "model": "Black 400",
-      "wp": 400,
-      "eurEx": 230,
+      "model": "Black 395Wp HJT",
+      "wp": 395,
+      "eurEx": 218,
       "currency": "EUR",
       "sourceUrl": "https://www.meyerburger.com/",
-      "sourceTitle": "Meyer Burger"
+      "sourceTitle": "Meyer Burger Black 395W HJT (made in Germany, premium)"
     },
     {
       "brand": "Longi",
@@ -77,10 +95,51 @@
   ],
   "inverters": [
     {
+      "brand": "Fronius",
+      "model": "Primo GEN24 6.0 Plus",
+      "kw": 6,
+      "eurEx": 1850,
+      "hybridCapable": true,
+      "currency": "EUR",
+      "sourceUrl": "https://www.fronius.com/en/solar-energy/installers-partners/technical-data/all-products/inverters/fronius-primo-gen24-plus",
+      "sourceTitle": "Fronius Primo GEN24 Plus hybrid inverter"
+    },
+    {
+      "brand": "Fronius",
+      "model": "Symo GEN24 10.0 Plus",
+      "kw": 10,
+      "eurEx": 2450,
+      "hybridCapable": true,
+      "currency": "EUR",
+      "sourceUrl": "https://www.fronius.com/en/solar-energy/installers-partners/technical-data/all-products/inverters/fronius-symo-gen24-plus",
+      "sourceTitle": "Fronius Symo GEN24 Plus hybrid inverter"
+    },
+    {
+      "brand": "SMA",
+      "model": "Sunny Tripower 8.0 Smart Energy",
+      "kw": 8,
+      "eurEx": 2250,
+      "hybridCapable": true,
+      "currency": "EUR",
+      "sourceUrl": "https://www.sma.de/en/products/hybrid-inverters/sunny-tripower-smart-energy",
+      "sourceTitle": "SMA Sunny Tripower Smart Energy hybrid inverter"
+    },
+    {
+      "brand": "Huawei",
+      "model": "SUN2000-5KTL-L1",
+      "kw": 5,
+      "eurEx": 1150,
+      "hybridCapable": true,
+      "currency": "EUR",
+      "sourceUrl": "https://solar.huawei.com/eu/professionals/all-products",
+      "sourceTitle": "Huawei SUN2000 L1 residential hybrid inverter"
+    },
+    {
       "brand": "Huawei",
       "model": "SUN2000-10KTL-M1",
       "kw": 10,
       "eurEx": 1800,
+      "hybridCapable": true,
       "sourceUrl": "https://ahguangya.en.made-in-china.com/product/wxSRZrBCftVg/China-Hybrid-Solar-Inverter-Huawei-Inverter-5kw-6kw-10kw-12kw-50kw-Original-Huawei-Hybrid-Inverter-in-Stock.html",
       "sourceTitle": "Hybrid Solar Inverter Huawei Inverter 5kw 6kw 10kw 12kw ...",
       "currency": "EUR"
@@ -90,6 +149,7 @@
       "model": "Sunny Tripower 8.0",
       "kw": 8,
       "eurEx": 1400,
+      "hybridCapable": false,
       "sourceUrl": "https://www.solaricashop.com/solar-inverters.html",
       "sourceTitle": "Solar inverter online | SMA Fronius KACO ABB SolarEdge | SolaricaShop.com",
       "currency": "EUR"
@@ -99,6 +159,7 @@
       "model": "Sunny Tripower 10.0",
       "kw": 10,
       "eurEx": 1600,
+      "hybridCapable": false,
       "sourceUrl": "https://www.solaricashop.com/solar-inverters.html",
       "sourceTitle": "Solar inverter online | SMA Fronius KACO ABB SolarEdge | SolaricaShop.com",
       "currency": "EUR"
@@ -108,12 +169,49 @@
       "model": "Sunny Boy 6.0-1AV-41",
       "kw": 6,
       "eurEx": 1200,
+      "hybridCapable": false,
       "sourceUrl": "https://www.solaricashop.com/solar-inverters.html",
       "sourceTitle": "Solar inverter online | SMA Fronius KACO ABB SolarEdge | SolaricaShop.com",
       "currency": "EUR"
     }
   ],
   "batteries": [
+    {
+      "brand": "BYD",
+      "model": "Battery-Box Premium HVS 10.2",
+      "kwh": 10.2,
+      "eurEx": 4600,
+      "currency": "EUR",
+      "sourceUrl": "https://www.bydbatterybox.com/",
+      "sourceTitle": "BYD Battery-Box Premium HVS"
+    },
+    {
+      "brand": "BYD",
+      "model": "Battery-Box Premium HVM 16.6",
+      "kwh": 16.6,
+      "eurEx": 6950,
+      "currency": "EUR",
+      "sourceUrl": "https://www.bydbatterybox.com/",
+      "sourceTitle": "BYD Battery-Box Premium HVM"
+    },
+    {
+      "brand": "Sungrow",
+      "model": "SBR096",
+      "kwh": 9.6,
+      "eurEx": 4100,
+      "currency": "EUR",
+      "sourceUrl": "https://en.sungrowpower.com/productDetail/2020/battery-sbr096-128-160-192-224-256",
+      "sourceTitle": "Sungrow SBR high-voltage LFP battery"
+    },
+    {
+      "brand": "sonnen",
+      "model": "sonnenBatterie 10",
+      "kwh": 11,
+      "eurEx": 8400,
+      "currency": "EUR",
+      "sourceUrl": "https://sonnen.de/stromspeicher/sonnenbatterie-10/",
+      "sourceTitle": "sonnenBatterie 10 (made in Germany)"
+    },
     {
       "brand": "Tesla",
       "model": "Powerwall 3",

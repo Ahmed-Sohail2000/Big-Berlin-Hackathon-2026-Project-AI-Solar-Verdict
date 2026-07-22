@@ -65,6 +65,8 @@ interface CatalogInverter {
   currency: string;
   sourceUrl: string;
   sourceTitle: string;
+  /** True for battery-backup-capable hybrid inverters (GEN24 Plus, Smart Energy, SUN2000). */
+  hybridCapable?: boolean;
 }
 interface CatalogBattery {
   brand: string;
@@ -409,6 +411,12 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   const { intake, roofSegments } = args;
   const eurPerKwh = args.eurPerKwh ?? EUR_PER_KWH_RESIDENTIAL;
 
+  // Grid connection type. Absent = "on_grid" (German residential default).
+  //   off_grid → every variant carries a battery >= 1.5x daily consumption
+  //              and a hybrid (island-capable) inverter.
+  //   hybrid   → every variant carries a battery; hybrid inverters preferred.
+  const gridType = intake.gridType ?? "on_grid";
+
   // -----------------------------------------------------------------------
   // 1. Demand
   // -----------------------------------------------------------------------
@@ -425,9 +433,20 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   if (CATALOG.panels.length === 0) {
     throw new Error("compose-from-market: catalog has no panels");
   }
-  const cheapestPanel = [...CATALOG.panels].sort(
-    (a, b) => a.eurEx / a.wp - b.eurEx / b.wp,
-  )[0];
+  // Panels sorted by €/Wp ascending (deterministic: brand+model tie-break).
+  // Tiers map onto strategies: margin → cheapest €/Wp, closeRate → market
+  // mid (~0.35 €/Wp), ltv → premium tier (~0.45+ €/Wp, e.g. Aiko/Meyer Burger).
+  const panelsByEurPerWp = [...CATALOG.panels].sort((a, b) => {
+    const d = a.eurEx / a.wp - b.eurEx / b.wp;
+    if (d !== 0) return d;
+    return `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`);
+  });
+  const cheapestPanel = panelsByEurPerWp[0];
+  const PANEL_TIER_BY_STRATEGY: Record<Strategy, CatalogPanel> = {
+    margin: cheapestPanel,
+    closeRate: panelsByEurPerWp[Math.floor((panelsByEurPerWp.length - 1) / 2)],
+    ltv: panelsByEurPerWp[panelsByEurPerWp.length - 1],
+  };
   // Panels are ~25% of installed price in DE — multiply by 4 for inverter +
   // labour + BOS amortisation. Keeps sizing comparable with calculate.ts's
   // €/kWp ladder (≈ 1700–2000 €/kWp).
@@ -497,28 +516,69 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   const variants: Variant[] = [];
   const sourceUrls: Partial<Record<Strategy, VariantSourceUrls>> = {};
 
+  // Off-grid battery floor: 1.5x daily consumption.
+  const offGridMinBatteryKwh = round1(dailyKwh * 1.5);
+
+  // Hybrid/off-grid systems need a battery-backup-capable inverter. Falls
+  // back to the full pool if the catalog carries no hybrid units (defensive).
+  const hybridInverters = CATALOG.inverters.filter((i) => i.hybridCapable === true);
+  const inverterPool =
+    gridType !== "on_grid" && hybridInverters.length > 0
+      ? hybridInverters
+      : CATALOG.inverters;
+
   VARIANT_CONFIGS.forEach((cfg, vIdx) => {
-    const includeBattery = includeBatteryFor(cfg.strategy, intake.wantsBattery);
+    // Off-grid / hybrid connections always include a battery — a homeowner
+    // preference of "no" cannot produce a working off-grid system.
+    const includeBattery =
+      gridType !== "on_grid" || includeBatteryFor(cfg.strategy, intake.wantsBattery);
     const includeHp = includeHeatPumpFor(cfg.strategy, intake.wantsHeatPump);
     const includeWb = includeWallboxFor(cfg.strategy, intake.evPref, intake.ev);
 
-    // Panel: cheapest €/Wp (same for all variants — best deal on the spec).
-    const panelChoice = cheapestPanel;
+    // Panel: strategy-tiered pick from the €/Wp-sorted catalog.
+    const panelChoice = PANEL_TIER_BY_STRATEGY[cfg.strategy];
 
     // Inverter: nearest match to (systemKwp × inverterFactor), rotated by vIdx.
     const inverterTargetKw = systemKwpRaw * cfg.inverterFactor;
     const inverterChoice = nearestByKey(
-      CATALOG.inverters,
+      inverterPool,
       inverterTargetKw,
       (i) => i.kw,
       vIdx,
     );
 
-    // Battery: nearest match to baseline × batteryFactor, rotated.
-    const batteryTargetKwh = Math.max(0, baselineBatteryKwh * cfg.batteryFactor);
-    const batteryChoice = includeBattery && CATALOG.batteries.length > 0
-      ? nearestByKey(CATALOG.batteries, batteryTargetKwh, (b) => b.kwh, vIdx)
+    // Battery: nearest match to baseline × batteryFactor, rotated. Off-grid
+    // restricts the pool to units that meet the 1.5x-daily floor (falling
+    // back to the largest unit if nothing in the catalog is big enough).
+    const batteryTargetKwh =
+      gridType === "off_grid"
+        ? Math.max(offGridMinBatteryKwh, baselineBatteryKwh * cfg.batteryFactor)
+        : gridType === "hybrid"
+          ? Math.max(1, baselineBatteryKwh * cfg.batteryFactor)
+          : Math.max(0, baselineBatteryKwh * cfg.batteryFactor);
+    let batteryPool = CATALOG.batteries;
+    if (gridType === "off_grid" && CATALOG.batteries.length > 0) {
+      const bigEnough = CATALOG.batteries.filter((b) => b.kwh >= offGridMinBatteryKwh);
+      batteryPool =
+        bigEnough.length > 0
+          ? bigEnough
+          : [CATALOG.batteries.reduce((a, b) => (b.kwh > a.kwh ? b : a))];
+    }
+    let batteryChoice = includeBattery && batteryPool.length > 0
+      ? nearestByKey(batteryPool, batteryTargetKwh, (b) => b.kwh, vIdx)
       : undefined;
+    // Off-grid floor: if no single unit is big enough, stack modules of the
+    // chosen unit (BYD Battery-Box / Sungrow SBR are modular towers) until
+    // the 1.5x-daily requirement is met. Deterministic: pure arithmetic.
+    if (gridType === "off_grid" && batteryChoice && batteryChoice.kwh < offGridMinBatteryKwh) {
+      const units = Math.ceil(offGridMinBatteryKwh / batteryChoice.kwh);
+      batteryChoice = {
+        ...batteryChoice,
+        model: `${batteryChoice.model} x${units}`,
+        kwh: round1(batteryChoice.kwh * units),
+        eurEx: batteryChoice.eurEx * units,
+      };
+    }
 
     // Wallbox: 11kW typical; rotate brand.
     const wallboxChoice = includeWb && CATALOG.wallboxes.length > 0
@@ -632,7 +692,38 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   // -----------------------------------------------------------------------
   // 5. Pack into a SizingResult
   // -----------------------------------------------------------------------
-  const recommendedBatteryKwh = round1(baselineBatteryKwh);
+  const recommendedBatteryKwh = round1(
+    gridType === "off_grid"
+      ? Math.max(baselineBatteryKwh, offGridMinBatteryKwh)
+      : baselineBatteryKwh,
+  );
+  const rules: SizingResult["rules"] = [
+    {
+      name: "roi_optimal",
+      pass: roi.npvEur25yr >= 0,
+      message: `25-yr NPV = ${round0(roi.npvEur25yr)} € at N=${panelCount}`,
+    },
+    {
+      name: "roof_fit",
+      pass: panelCount <= panelFitMax || panelFitMax === 0,
+      message: `panels ${panelCount} ≤ roof fit ${panelFitMax}`,
+    },
+  ];
+  if (gridType !== "on_grid") {
+    const batteriesOk = variants.every(
+      (v) =>
+        v.bom.battery !== undefined &&
+        (gridType !== "off_grid" || v.bom.battery.kwh >= offGridMinBatteryKwh - 1e-6),
+    );
+    rules.push({
+      name: "grid_type_policy",
+      pass: batteriesOk,
+      message:
+        gridType === "off_grid"
+          ? `off-grid: battery >= ${offGridMinBatteryKwh} kWh (1.5x daily ${round1(dailyKwh)} kWh) + hybrid inverter in every variant`
+          : "hybrid: battery + battery-backup-capable inverter in every variant",
+    });
+  }
   const result: SizingResultWithMarket = {
     annualKwh: round0(annualKwhRaw),
     dailyKwh: round1(dailyKwh),
@@ -642,18 +733,7 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
     systemKwp,
     batteryKwh: recommendedBatteryKwh,
     annualYieldKwh,
-    rules: [
-      {
-        name: "roi_optimal",
-        pass: roi.npvEur25yr >= 0,
-        message: `25-yr NPV = ${round0(roi.npvEur25yr)} € at N=${panelCount}`,
-      },
-      {
-        name: "roof_fit",
-        pass: panelCount <= panelFitMax || panelFitMax === 0,
-        message: `panels ${panelCount} ≤ roof fit ${panelFitMax}`,
-      },
-    ],
+    rules,
     variants: [variants[0], variants[1], variants[2]] as [Variant, Variant, Variant],
     sourceUrls: sourceUrls as Record<Strategy, VariantSourceUrls>,
     catalogScrapedAt: CATALOG.scrapedAt,

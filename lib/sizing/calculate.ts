@@ -16,6 +16,7 @@ import type {
   Variant,
 } from "@/lib/contracts";
 import { recommendBom } from "@/lib/reonic/recommend";
+import { applyGridTypePolicy } from "@/lib/sizing/grid-policy";
 import { enrichVariantRationale } from "@/lib/sizing/rationale";
 
 // ---------------------------------------------------------------------------
@@ -795,7 +796,10 @@ export function sizeQuote(
     };
   }) as [Variant, Variant, Variant];
 
-  return result;
+  // Additive grid-type post-step (pure + deterministic). Returns `result`
+  // unchanged when intake.gridType is absent or "on_grid", so the golden
+  // profiles and every legacy call site are byte-identical.
+  return applyGridTypePolicy(result, intake, eurPerKwhOverride);
 }
 
 // ---------------------------------------------------------------------------

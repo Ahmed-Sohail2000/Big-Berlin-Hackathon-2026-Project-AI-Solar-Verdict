@@ -6,6 +6,8 @@ export type Goal = "lower_bill" | "independence";
 export type Strategy = "margin" | "closeRate" | "ltv";
 /** Three-state homeowner preference. "idk" = "show me both with and without so I can compare". */
 export type Preference = "yes" | "no" | "idk";
+/** Grid connection type. German residential default is "on_grid" (feed-in via EEG); "hybrid" = grid-tied + battery backup. */
+export type GridType = "on_grid" | "off_grid" | "hybrid";
 
 export interface Intake {
   address: string;
@@ -21,6 +23,8 @@ export interface Intake {
   wantsBattery?: Preference;
   /** Three-state heat pump preference (new homeowner UI). */
   wantsHeatPump?: Preference;
+  /** Grid connection type (new homeowner UI). Optional — additive per frozen-contract rule; defaults to "on_grid". */
+  gridType?: GridType;
   heating: Heating;
   goal: Goal;
 }

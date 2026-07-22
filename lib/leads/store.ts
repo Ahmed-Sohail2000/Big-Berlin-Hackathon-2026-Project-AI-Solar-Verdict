@@ -6,7 +6,7 @@
  * the same Next.js dev server, so a process-local Map is enough.
  */
 
-import type { BoM, Goal, Heating, Preference, SizingResult, Variant } from "@/lib/contracts";
+import type { BoM, Goal, GridType, Heating, Preference, SizingResult, Variant } from "@/lib/contracts";
 import { sizeQuote } from "@/lib/sizing/calculate";
 import { deterministicBlur } from "@/lib/leads/blur";
 
@@ -36,6 +36,8 @@ export type LeadPublicPreview = {
     wantsBattery?: Preference;
     /** Three-state heat pump preference forwarded from intake (new flow). */
     wantsHeatPump?: Preference;
+    /** Grid connection type forwarded from intake. Absent = "on_grid". */
+    gridType?: GridType;
   };
 };
 
@@ -99,6 +101,8 @@ export type CreateLeadInput = {
   wantsBattery?: Preference;
   /** Three-state heat pump preference (new homeowner intake). */
   wantsHeatPump?: Preference;
+  /** Grid connection type (new homeowner intake). Absent = "on_grid". */
+  gridType?: GridType;
   roofSegments?: SizingResult["roofSegments"];
   acceptedByInstallerId?: string;
   acceptedAt?: string;
@@ -192,6 +196,7 @@ export function buildLead(input: CreateLeadInput): LeadRecord {
       lng: input.lng,
       monthlyBillEur: input.monthlyBillEur,
       ev: input.ev,
+      gridType: input.gridType,
       heating: input.heating,
       goal: normalizeGoal(input.goal),
     },
@@ -224,6 +229,7 @@ export function buildLead(input: CreateLeadInput): LeadRecord {
         evPref: input.evPref,
         wantsBattery: input.wantsBattery,
         wantsHeatPump: input.wantsHeatPump,
+        gridType: input.gridType,
       },
     },
     privateDetails: {
