@@ -6,8 +6,19 @@
  * the same Next.js dev server, so a process-local Map is enough.
  */
 
-import type { BoM, Goal, GridType, Heating, Preference, SizingResult, Variant } from "@/lib/contracts";
+import type {
+  BoM,
+  BuildingType,
+  Goal,
+  GridType,
+  Heating,
+  Preference,
+  RoofType,
+  SizingResult,
+  Variant,
+} from "@/lib/contracts";
 import { sizeQuote } from "@/lib/sizing/calculate";
+import { commercialEurPerKwh, isCommercialBuilding } from "@/lib/sizing/commercial-policy";
 import { deterministicBlur } from "@/lib/leads/blur";
 
 export type LeadStatus = "new" | "accepted" | "offer_sent" | "closed";
@@ -38,6 +49,14 @@ export type LeadPublicPreview = {
     wantsHeatPump?: Preference;
     /** Grid connection type forwarded from intake. Absent = "on_grid". */
     gridType?: GridType;
+    /** Building use class forwarded from intake. Absent = "residential". */
+    buildingType?: BuildingType;
+    /** ISO-3166 / free-text country forwarded from intake. Absent = "DE". */
+    country?: string;
+    /** Roof geometry class forwarded from intake. */
+    roofType?: RoofType;
+    /** Optional commercial peak demand in kW. */
+    peakDemandKw?: number;
   };
 };
 
@@ -111,6 +130,14 @@ export type CreateLeadInput = {
   wantsHeatPump?: Preference;
   /** Grid connection type (new homeowner intake). Absent = "on_grid". */
   gridType?: GridType;
+  /** Building use class (commercial intake). Absent = "residential". */
+  buildingType?: BuildingType;
+  /** ISO-3166 / free-text country (commercial intake). Absent = "DE". */
+  country?: string;
+  /** Roof geometry class (commercial intake). */
+  roofType?: RoofType;
+  /** Optional commercial peak demand in kW. */
+  peakDemandKw?: number;
   roofSegments?: SizingResult["roofSegments"];
   acceptedByInstallerId?: string;
   acceptedAt?: string;
@@ -203,6 +230,11 @@ function bomLinesFromBom(bom: BoM): LeadRecord["finalBom"] {
 }
 
 export function buildLead(input: CreateLeadInput): LeadRecord {
+  // Thread a commercial EUR/kWh override for commercial buildingTypes so
+  // savings use the commercial tariff (labelled DE benchmark) instead of the
+  // residential 0.32 default. Residential leads keep the residential path.
+  const commercial = isCommercialBuilding(input.buildingType);
+  const eurPerKwhOverride = commercial ? commercialEurPerKwh(input.country) : undefined;
   const sizing = sizeQuote(
     {
       address: input.address,
@@ -211,10 +243,15 @@ export function buildLead(input: CreateLeadInput): LeadRecord {
       monthlyBillEur: input.monthlyBillEur,
       ev: input.ev,
       gridType: input.gridType,
+      buildingType: input.buildingType,
+      country: input.country,
+      roofType: input.roofType,
+      peakDemandKw: input.peakDemandKw,
       heating: input.heating,
       goal: normalizeGoal(input.goal),
     },
     input.roofSegments ?? defaultSegments(),
+    eurPerKwhOverride,
   );
   const recommended = sizing.variants[1];
   const blurred = deterministicBlur(input.id, input.lat, input.lng);
@@ -244,6 +281,10 @@ export function buildLead(input: CreateLeadInput): LeadRecord {
         wantsBattery: input.wantsBattery,
         wantsHeatPump: input.wantsHeatPump,
         gridType: input.gridType,
+        buildingType: input.buildingType,
+        country: input.country,
+        roofType: input.roofType,
+        peakDemandKw: input.peakDemandKw,
       },
     },
     privateDetails: {
@@ -288,6 +329,15 @@ export function createLead(input: CreateLeadInput | LeadRecord): LeadRecord {
   const lead = "publicPreview" in input ? input : buildLead(input);
   STORE.set(lead.id, lead);
   return lead;
+}
+
+/**
+ * Remove a lead from the store. Pure w.r.t. inputs (deterministic): returns
+ * true when a lead was present and removed, false when the id was absent.
+ * Lets the installer delete a lead they created or one that was withdrawn.
+ */
+export function deleteLead(id: string): boolean {
+  return STORE.delete(id);
 }
 
 export function acceptLead(

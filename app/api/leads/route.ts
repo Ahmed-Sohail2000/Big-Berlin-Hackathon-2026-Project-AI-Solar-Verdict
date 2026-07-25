@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  BuildingTypeSchema,
   GoalSchema,
   GridTypeSchema,
   HeatingSchema,
   RoofSegmentSchema,
+  RoofTypeSchema,
 } from "@/data/schema";
 import { createLead, listLeads } from "@/lib/leads/store";
 
@@ -41,6 +43,11 @@ const CreateLeadSchema = z.object({
   wantsBattery: PreferenceSchema.optional(),
   wantsHeatPump: PreferenceSchema.optional(),
   gridType: GridTypeSchema.optional(),
+  // Commercial intake fields (additive; absent => residential / DE defaults).
+  buildingType: BuildingTypeSchema.optional(),
+  country: z.string().min(1).optional(),
+  roofType: RoofTypeSchema.optional(),
+  peakDemandKw: z.number().positive().optional(),
   roofSegments: z.array(LenientRoofSegmentSchema).optional(),
   // Gradium voice memo recorded on the intake page — stored in privateDetails.
   voiceNote: z

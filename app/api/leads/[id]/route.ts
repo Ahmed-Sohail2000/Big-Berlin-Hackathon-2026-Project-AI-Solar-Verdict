@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { BomSchema } from "@/data/schema";
-import { acceptLead, approveLead, getLead, sendOffer } from "@/lib/leads/store";
+import { acceptLead, approveLead, deleteLead, getLead, sendOffer } from "@/lib/leads/store";
 
 export const dynamic = "force-dynamic";
 
 interface Ctx {
   params: Promise<{ id: string }>;
 }
+
+// Route param is always a non-empty string; validate defensively so a blank id
+// (e.g. "/api/leads/%20") is rejected as a 400 rather than a silent 404.
+const IdSchema = z.string().trim().min(1);
 
 const PatchSchema = z.discriminatedUnion("action", [
   z.object({
@@ -90,4 +94,37 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   });
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ lead: updated, success: true });
+}
+
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const { id } = await params;
+  const parsedId = IdSchema.safeParse(id);
+  if (!parsedId.success) {
+    return NextResponse.json(
+      {
+        error: "invalid lead id",
+        issues: parsedId.error.issues.map((i) => i.message),
+      },
+      { status: 400 },
+    );
+  }
+  const removed = deleteLead(parsedId.data);
+  if (!removed) {
+    return NextResponse.json(
+      {
+        error: "not found",
+        // The lead store is in-process server state — always "live".
+        apiStatus: { source: "live", status: "ok", latencyMs: 0 },
+      },
+      { status: 404 },
+    );
+  }
+  return NextResponse.json(
+    {
+      deleted: true,
+      id: parsedId.data,
+      apiStatus: { source: "live", status: "ok", latencyMs: 0 },
+    },
+    { status: 200 },
+  );
 }

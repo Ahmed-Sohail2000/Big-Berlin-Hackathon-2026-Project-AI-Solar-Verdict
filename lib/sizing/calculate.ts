@@ -17,6 +17,10 @@ import type {
 } from "@/lib/contracts";
 import { recommendBom } from "@/lib/reonic/recommend";
 import { applyGridTypePolicy } from "@/lib/sizing/grid-policy";
+import {
+  applyCommercialEngineering,
+  isCommercialBuilding,
+} from "@/lib/sizing/commercial-policy";
 import { enrichVariantRationale } from "@/lib/sizing/rationale";
 
 // ---------------------------------------------------------------------------
@@ -85,6 +89,15 @@ const FEED_IN_EUR_PER_KWH = 0.08;
 
 /** Threshold above which the system warrants a heat pump for non-HP heating. */
 const HP_DEMAND_THRESHOLD_KWH = 8000;
+
+/** Commercial annual full-load hours: rough kWh consumed per kW of peak demand
+ *  per year for a daytime-heavy commercial load (office/retail/warehouse).
+ *  Used ONLY for commercial buildingTypes — the residential path is untouched. */
+const COMMERCIAL_FULL_LOAD_HOURS = 1900;
+
+/** Commercial demand-coverage headroom: size up to 125% of implied consumption
+ *  when a peak demand is provided (commercial self-consumes daytime + exports). */
+const COMMERCIAL_DEMAND_COVERAGE = 1.25;
 
 // ---------------------------------------------------------------------------
 // Rounding helpers
@@ -323,9 +336,42 @@ function deriveAnnualKwh(intake: Intake, eurPerKwhOverride?: number): number {
   if (typeof intake.annualKwh === "number" && intake.annualKwh > 0) {
     return intake.annualKwh;
   }
+  // Commercial branch (guarded — residential path below is byte-identical):
+  // when a peak demand is supplied, estimate annual consumption from a daytime
+  // commercial full-load-hours factor rather than a residential monthly bill.
+  if (
+    isCommercialBuilding(intake.buildingType) &&
+    typeof intake.peakDemandKw === "number" &&
+    intake.peakDemandKw > 0
+  ) {
+    return Math.max(0, intake.peakDemandKw * COMMERCIAL_FULL_LOAD_HOURS);
+  }
   const eurPerKwh = eurPerKwhOverride ?? EUR_PER_KWH_RESIDENTIAL;
   const annual = (intake.monthlyBillEur * 12) / eurPerKwh;
   return Math.max(0, annual);
+}
+
+/**
+ * Commercial panel count (guarded — only ever called for commercial
+ * buildingTypes). Commercial rooftops are sized to generation potential:
+ * high daytime self-consumption plus export make filling the usable roof
+ * economic. When a peak demand is provided we cap at 125% of the implied
+ * annual consumption so we do not oversize past what the site can absorb.
+ */
+function commercialPanelCount(
+  intake: Intake,
+  panelFitMax: number,
+  panelDemand: number,
+): number {
+  if (typeof intake.peakDemandKw === "number" && intake.peakDemandKw > 0) {
+    const annual = intake.peakDemandKw * COMMERCIAL_FULL_LOAD_HOURS;
+    const demandCap = Math.ceil(
+      (annual * COMMERCIAL_DEMAND_COVERAGE) / KWH_PER_PANEL_PER_YEAR_DE,
+    );
+    return Math.max(1, Math.min(panelFitMax, Math.max(demandCap, panelDemand)));
+  }
+  // No explicit demand signal — fill the usable roof (commercial default).
+  return Math.max(1, panelFitMax);
 }
 
 /**
@@ -705,8 +751,11 @@ export function sizeQuote(
   const panelFitMax = calcPanelFitMax(roofSegments);
   const panelDemand = Math.ceil(annualKwhRaw / KWH_PER_PANEL_PER_YEAR_DE);
   const roofAware = panelFitMax > 0;
+  const commercial = isCommercialBuilding(intake.buildingType);
   const panelCount = roofAware
-    ? Math.max(1, Math.min(panelFitMax, Math.round(panelDemand * DEMAND_OVERSIZE)))
+    ? commercial
+      ? commercialPanelCount(intake, panelFitMax, panelDemand)
+      : Math.max(1, Math.min(panelFitMax, Math.round(panelDemand * DEMAND_OVERSIZE)))
     : calcPanelCount(annualKwhRaw);
   const systemKwpRaw = panelCount * PANEL_KW;
   const systemKwp = round1(systemKwpRaw);
@@ -799,7 +848,12 @@ export function sizeQuote(
   // Additive grid-type post-step (pure + deterministic). Returns `result`
   // unchanged when intake.gridType is absent or "on_grid", so the golden
   // profiles and every legacy call site are byte-identical.
-  return applyGridTypePolicy(result, intake, eurPerKwhOverride);
+  const gridApplied = applyGridTypePolicy(result, intake, eurPerKwhOverride);
+
+  // Additive commercial-engineering post-step (pure + deterministic). Returns
+  // its input unchanged (same reference) for a residential/absent buildingType
+  // with no flat roofType, so residential stays byte-identical.
+  return applyCommercialEngineering(gridApplied, intake);
 }
 
 // ---------------------------------------------------------------------------

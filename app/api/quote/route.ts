@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { GoalSchema, GridTypeSchema, HeatingSchema, IntakeSchema } from "@/data/schema";
+import {
+  BuildingTypeSchema,
+  GoalSchema,
+  GridTypeSchema,
+  HeatingSchema,
+  IntakeSchema,
+  RoofTypeSchema,
+} from "@/data/schema";
 import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
 import { getBuildingInsights } from "@/lib/api/solar";
 import { getResidentialTariff } from "@/lib/api/tavily";
 import { sizeQuote } from "@/lib/sizing/calculate";
+import { commercialEurPerKwh, isCommercialBuilding } from "@/lib/sizing/commercial-policy";
 import type { ApiStatus, Intake, RoofSegment } from "@/lib/contracts";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +28,11 @@ const QuoteQuerySchema = z.object({
   goal: GoalSchema.default("lower_bill"),
   gridType: GridTypeSchema.optional(),
   annualKwh: z.coerce.number().positive().optional(),
+  // Commercial params (additive; absent => residential / DE defaults).
+  buildingType: BuildingTypeSchema.optional(),
+  country: z.string().min(1).optional(),
+  roofType: RoofTypeSchema.optional(),
+  peakDemandKw: z.coerce.number().positive().optional(),
 });
 
 interface GeocodeResult {
@@ -156,9 +169,15 @@ export async function GET(req: NextRequest) {
     annualKwh: params.annualKwh,
     ev: params.ev,
     gridType: params.gridType,
+    buildingType: params.buildingType,
+    country: params.country,
+    roofType: params.roofType,
+    peakDemandKw: params.peakDemandKw,
     heating: params.heating,
     goal: params.goal,
   });
+
+  const commercial = isCommercialBuilding(intake.buildingType);
 
   const tariff = await getResidentialTariff({
     lat: geo.lat,
@@ -167,13 +186,22 @@ export async function GET(req: NextRequest) {
     city: extractCity(geo.formattedAddress),
   });
 
-  // 4. Size (pure deterministic math; gridType policy applied inside)
+  // Commercial sites use the DE commercial tariff benchmark (lower than the
+  // residential rate) and are labelled as such; residential keeps the Tavily
+  // residential tariff. We only ever ground the DE benchmark for commercial.
+  const eurPerKwhUsed = commercial ? commercialEurPerKwh(intake.country) : tariff.eurPerKwh;
+
+  // Commercial roofs are larger; when the Solar API returns no coverage we fall
+  // back to a labelled DE flat-roof commercial default (vs the residential one).
+  const fallbackSegments: RoofSegment[] = commercial
+    ? [{ pitchDegrees: 3, azimuthDegrees: 180, areaMeters2: 1200, annualSunshineHours: 1050 }]
+    : [{ pitchDegrees: 35, azimuthDegrees: 180, areaMeters2: 60, annualSunshineHours: 1100 }];
+
+  // 4. Size (pure deterministic math; gridType + commercial policies inside)
   const sizing = sizeQuote(
     intake,
-    roofSegments.length > 0
-      ? roofSegments
-      : [{ pitchDegrees: 35, azimuthDegrees: 180, areaMeters2: 60, annualSunshineHours: 1100 }],
-    tariff.eurPerKwh,
+    roofSegments.length > 0 ? roofSegments : fallbackSegments,
+    eurPerKwhUsed,
   );
 
   return NextResponse.json(
@@ -184,6 +212,17 @@ export async function GET(req: NextRequest) {
       coordinates: { lat: geo.lat, lng: geo.lng },
       roofSegmentsFromSolarApi: roofSegments.length,
       tariff,
+      // Honest tariff context: which EUR/kWh actually drove the savings math and
+      // why. Commercial uses the DE commercial benchmark (labelled), not the
+      // residential Tavily rate.
+      tariffContext: {
+        buildingType: intake.buildingType ?? "residential",
+        commercial,
+        eurPerKwhUsed,
+        basis: commercial
+          ? "DE commercial benchmark (~0.22 EUR/kWh, labelled — not country-specific)"
+          : `${tariff.source} residential tariff`,
+      },
       intake,
       sizing,
       // Honest per-dependency source badges (live | cached | mock).

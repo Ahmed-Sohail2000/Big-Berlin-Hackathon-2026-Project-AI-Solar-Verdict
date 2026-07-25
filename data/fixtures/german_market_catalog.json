@@ -71,8 +71,9 @@
       "wp": 540,
       "eurEx": 135,
       "currency": "EUR",
+      "commercial": true,
       "sourceUrl": "https://www.longi.com/de/products/modules/hi-mo-x10/",
-      "sourceTitle": "Longi Hi-MO X10 540W"
+      "sourceTitle": "Longi Hi-MO X10 540W (commercial large-format)"
     },
     {
       "brand": "Trina Solar",
@@ -80,8 +81,9 @@
       "wp": 605,
       "eurEx": 150,
       "currency": "EUR",
+      "commercial": true,
       "sourceUrl": "https://www.trinasolar.com/en/product/Vertex-N",
-      "sourceTitle": "Trina Vertex N 605W"
+      "sourceTitle": "Trina Vertex N 605W (commercial large-format)"
     },
     {
       "brand": "JA Solar",
@@ -89,8 +91,29 @@
       "wp": 580,
       "eurEx": 140,
       "currency": "EUR",
+      "commercial": true,
       "sourceUrl": "https://www.jasolar.com/html/de/index.html",
-      "sourceTitle": "JA Solar DeepBlue 4.0 Pro"
+      "sourceTitle": "JA Solar DeepBlue 4.0 Pro 580W (commercial bifacial)"
+    },
+    {
+      "brand": "Trina Solar",
+      "model": "Vertex 585W Bifacial TSM-NEG19RC.20",
+      "wp": 585,
+      "eurEx": 143,
+      "currency": "EUR",
+      "commercial": true,
+      "sourceUrl": "https://www.trinasolar.com/en/product/Vertex-Bifacial",
+      "sourceTitle": "Trina Vertex 585W bifacial dual-glass (commercial)"
+    },
+    {
+      "brand": "Longi",
+      "model": "Hi-MO 7 LR5-72HTH 580M Bifacial",
+      "wp": 580,
+      "eurEx": 138,
+      "currency": "EUR",
+      "commercial": true,
+      "sourceUrl": "https://www.longi.com/en/products/modules/hi-mo-7/",
+      "sourceTitle": "Longi Hi-MO 7 580W bifacial (commercial C&I)"
     }
   ],
   "inverters": [
@@ -172,6 +195,50 @@
       "hybridCapable": false,
       "sourceUrl": "https://www.solaricashop.com/solar-inverters.html",
       "sourceTitle": "Solar inverter online | SMA Fronius KACO ABB SolarEdge | SolaricaShop.com",
+      "currency": "EUR"
+    },
+    {
+      "brand": "SMA",
+      "model": "Sunny Tripower CORE1 STP 50-40",
+      "kw": 50,
+      "eurEx": 4200,
+      "hybridCapable": false,
+      "commercial": true,
+      "sourceUrl": "https://www.sma.de/en/products/solar-inverters/sunny-tripower-core1",
+      "sourceTitle": "SMA Sunny Tripower CORE1 50 kW commercial string inverter (1000 V, 6 MPPT)",
+      "currency": "EUR"
+    },
+    {
+      "brand": "SMA",
+      "model": "Sunny Tripower CORE2 STP 110-60",
+      "kw": 110,
+      "eurEx": 7900,
+      "hybridCapable": false,
+      "commercial": true,
+      "sourceUrl": "https://www.sma.de/en/products/solar-inverters/sunny-tripower-core2",
+      "sourceTitle": "SMA Sunny Tripower CORE2 110 kW commercial string inverter (1100 V, 12 MPPT)",
+      "currency": "EUR"
+    },
+    {
+      "brand": "Huawei",
+      "model": "SUN2000-100KTL-M1",
+      "kw": 100,
+      "eurEx": 6800,
+      "hybridCapable": false,
+      "commercial": true,
+      "sourceUrl": "https://solar.huawei.com/eu/professionals/all-products/SUN2000-100KTL-M1",
+      "sourceTitle": "Huawei SUN2000-100KTL-M1 100 kW commercial string inverter (1100 V, 10 MPPT)",
+      "currency": "EUR"
+    },
+    {
+      "brand": "Fronius",
+      "model": "Tauro ECO 100-3-D",
+      "kw": 100,
+      "eurEx": 7400,
+      "hybridCapable": false,
+      "commercial": true,
+      "sourceUrl": "https://www.fronius.com/en/solar-energy/installers-partners/products-solutions/commercial-systems/inverters/fronius-tauro",
+      "sourceTitle": "Fronius Tauro ECO 100 kW commercial project inverter (1000 V, 3 MPPT)",
       "currency": "EUR"
     }
   ],
@@ -348,6 +415,24 @@
       "currency": "EUR",
       "sourceUrl": "https://www.ibc-solar.de/",
       "sourceTitle": "IBC TopFix 200"
+    },
+    {
+      "brand": "K2 Systems",
+      "model": "D-Dome 6.10 flat-roof ballasted (per module)",
+      "eurEx": 48,
+      "currency": "EUR",
+      "commercial": true,
+      "sourceUrl": "https://k2-systems.com/en/products/flat-roof-systems/d-dome",
+      "sourceTitle": "K2 Systems D-Dome east-west ballasted flat-roof mounting (commercial)"
+    },
+    {
+      "brand": "Schletter",
+      "model": "FixGrid 15 flat-roof ballasted (per module)",
+      "eurEx": 52,
+      "currency": "EUR",
+      "commercial": true,
+      "sourceUrl": "https://www.schletter-group.com/en/flat-roof/",
+      "sourceTitle": "Schletter FixGrid 15 south/east-west ballasted flat-roof system (commercial)"
     }
   ]
 }

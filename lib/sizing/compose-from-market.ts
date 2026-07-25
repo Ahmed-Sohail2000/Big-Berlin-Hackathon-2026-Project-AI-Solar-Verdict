@@ -27,6 +27,11 @@ import {
   defaultBatteryKwhTarget,
   optimizePanelCountForRoi,
 } from "@/lib/sizing/roi-optimizer";
+import {
+  applyCommercialEngineering,
+  commercialEurPerKwh,
+  isCommercialBuilding,
+} from "@/lib/sizing/commercial-policy";
 
 // ---------------------------------------------------------------------------
 // Local constants (mirrors of calculate.ts — do NOT modify that file)
@@ -43,6 +48,24 @@ const PANEL_FOOTPRINT_M2 = 1.7;
 const ROOF_PACKING_FACTOR = 0.7;
 const MIN_SEGMENT_AREA_M2 = 10;
 const NPV_HORIZON_YEARS = 25;
+/** Commercial annual full-load hours per kW of peak demand (daytime load). */
+const COMMERCIAL_FULL_LOAD_HOURS = 1900;
+/** Commercial demand-coverage headroom when a peak demand is supplied. */
+const COMMERCIAL_DEMAND_COVERAGE = 1.25;
+/** Installation labour + amortised overhead multiplier on hardware cost. */
+const LABOUR_MULTIPLIER = 1.6;
+/**
+ * Deterministic split of the commercial balance-of-system residual
+ * (totalEur − hardware − mounting) across the named BoS line items. These are
+ * engineering conventions (share of the catalog-derived residual), NOT
+ * invented prices — every euro traces back to the catalog-priced total.
+ */
+const BOS_SPLIT = {
+  dcStringCabling: 0.15,
+  acCombinerProtection: 0.12,
+  gridConnection: 0.18,
+  installationLabour: 0.55,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Catalog typing
@@ -56,6 +79,8 @@ interface CatalogPanel {
   currency: string;
   sourceUrl: string;
   sourceTitle: string;
+  /** True for commercial large-format / bifacial C&I modules. */
+  commercial?: boolean;
 }
 interface CatalogInverter {
   brand: string;
@@ -67,6 +92,8 @@ interface CatalogInverter {
   sourceTitle: string;
   /** True for battery-backup-capable hybrid inverters (GEN24 Plus, Smart Energy, SUN2000). */
   hybridCapable?: boolean;
+  /** True for commercial 3-phase string inverters (CORE1/CORE2, 100KTL, Tauro). */
+  commercial?: boolean;
 }
 interface CatalogBattery {
   brand: string;
@@ -102,6 +129,8 @@ interface CatalogMount {
   currency: string;
   sourceUrl: string;
   sourceTitle: string;
+  /** True for commercial flat-roof ballasted mounting (K2 D-Dome, Schletter FixGrid). */
+  commercial?: boolean;
 }
 interface MarketCatalog {
   scrapedAt: string;
@@ -409,7 +438,11 @@ export interface ComposeFromMarketArgs {
 
 export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWithMarket {
   const { intake, roofSegments } = args;
-  const eurPerKwh = args.eurPerKwh ?? EUR_PER_KWH_RESIDENTIAL;
+  // Commercial sites use the DE commercial tariff benchmark (labelled) unless
+  // the caller supplies an explicit override; residential keeps 0.32.
+  const commercial = isCommercialBuilding(intake.buildingType);
+  const eurPerKwh =
+    args.eurPerKwh ?? (commercial ? commercialEurPerKwh(intake.country) : EUR_PER_KWH_RESIDENTIAL);
 
   // Grid connection type. Absent = "on_grid" (German residential default).
   //   off_grid → every variant carries a battery >= 1.5x daily consumption
@@ -436,7 +469,12 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   // Panels sorted by €/Wp ascending (deterministic: brand+model tie-break).
   // Tiers map onto strategies: margin → cheapest €/Wp, closeRate → market
   // mid (~0.35 €/Wp), ltv → premium tier (~0.45+ €/Wp, e.g. Aiko/Meyer Burger).
-  const panelsByEurPerWp = [...CATALOG.panels].sort((a, b) => {
+  // Commercial proposals draw from commercial large-format / bifacial modules
+  // only (falling back to the full pool if the catalog carries none).
+  const commercialPanels = CATALOG.panels.filter((p) => p.commercial === true);
+  const panelPool =
+    commercial && commercialPanels.length > 0 ? commercialPanels : CATALOG.panels;
+  const panelsByEurPerWp = [...panelPool].sort((a, b) => {
     const d = a.eurEx / a.wp - b.eurEx / b.wp;
     if (d !== 0) return d;
     return `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`);
@@ -489,8 +527,20 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   const demandPanelCap = Math.ceil(
     (futureDemandKwh * DEMAND_COVERAGE_CAP) / KWH_PER_PANEL_PER_YEAR_DE,
   );
+  // Commercial rooftops are sized to generation potential: fill the usable roof
+  // (or a peak-demand-implied cap) since daytime self-consumption + export make
+  // it economic. Residential uses the NPV-optimal demand-coverage cap.
+  const commercialPanelCap =
+    typeof intake.peakDemandKw === "number" && intake.peakDemandKw > 0
+      ? Math.ceil(
+          (intake.peakDemandKw * COMMERCIAL_FULL_LOAD_HOURS * COMMERCIAL_DEMAND_COVERAGE) /
+            KWH_PER_PANEL_PER_YEAR_DE,
+        )
+      : fitMaxSafe;
   // Final cap = min(physical roof fit, demand-coverage). Always ≥ 1.
-  const roiFitMax = Math.max(1, Math.min(fitMaxSafe, demandPanelCap));
+  const roiFitMax = commercial
+    ? Math.max(1, Math.min(fitMaxSafe, commercialPanelCap))
+    : Math.max(1, Math.min(fitMaxSafe, demandPanelCap));
 
   const roi = optimizePanelCountForRoi({
     panelFitMax: roiFitMax,
@@ -503,7 +553,11 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
     batteryEurPerKwh: Number.isFinite(batteryEurPerKwh) ? batteryEurPerKwh : 600,
   });
 
-  const panelCount = Math.min(roiFitMax, Math.max(1, roi.panelCount));
+  // Commercial fills to the cap (generation-led); residential takes the
+  // NPV-optimal count from the optimiser.
+  const panelCount = commercial
+    ? roiFitMax
+    : Math.min(roiFitMax, Math.max(1, roi.panelCount));
   const systemKwpRaw = panelCount * PANEL_KW;
   const systemKwp = round1(systemKwpRaw);
 
@@ -521,11 +575,20 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
 
   // Hybrid/off-grid systems need a battery-backup-capable inverter. Falls
   // back to the full pool if the catalog carries no hybrid units (defensive).
+  // Commercial (grid-tied) systems use commercial 3-phase string inverters.
   const hybridInverters = CATALOG.inverters.filter((i) => i.hybridCapable === true);
+  const commercialInverters = CATALOG.inverters.filter((i) => i.commercial === true);
   const inverterPool =
     gridType !== "on_grid" && hybridInverters.length > 0
       ? hybridInverters
-      : CATALOG.inverters;
+      : commercial && commercialInverters.length > 0
+        ? commercialInverters
+        : CATALOG.inverters;
+
+  // Commercial mounting = flat-roof ballasted (K2 D-Dome / Schletter FixGrid).
+  const commercialMounts = CATALOG.mounts.filter((m) => m.commercial === true);
+  const mountPool =
+    commercial && commercialMounts.length > 0 ? commercialMounts : CATALOG.mounts;
 
   VARIANT_CONFIGS.forEach((cfg, vIdx) => {
     // Off-grid / hybrid connections always include a battery — a homeowner
@@ -591,8 +654,8 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
       : undefined;
 
     // Mount: rotate brand. One mount unit per panel.
-    const mountChoice = CATALOG.mounts.length > 0
-      ? rotatePick(CATALOG.mounts, vIdx)
+    const mountChoice = mountPool.length > 0
+      ? rotatePick(mountPool, vIdx)
       : undefined;
 
     // ---- BoM ----
@@ -642,15 +705,60 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
     // Wallbox / HP: 1 × eurEx.
     // Mount: count × eurEx (per-panel mounting hardware).
     // Add an installation labour multiplier so total looks realistic.
-    const LABOUR_MULTIPLIER = 1.6;
-    const totalEur =
+    const hardwareEur =
       panelChoice.eurEx * panelCount +
       inverterChoice.eurEx +
       (batteryChoice ? batteryChoice.eurEx : 0) +
       (wallboxChoice ? wallboxChoice.eurEx : 0) +
-      (heatPumpChoice ? heatPumpChoice.eurEx : 0) +
-      (mountChoice ? mountChoice.eurEx * panelCount : 0);
-    bom.totalEur = round0(totalEur * LABOUR_MULTIPLIER);
+      (heatPumpChoice ? heatPumpChoice.eurEx : 0);
+    const mountingEur = mountChoice ? mountChoice.eurEx * panelCount : 0;
+    bom.totalEur = round0((hardwareEur + mountingEur) * LABOUR_MULTIPLIER);
+
+    // ---- Commercial balance-of-system line items ----
+    // balance = totalEur − hardware, split across named BoS lines by
+    // deterministic engineering-convention shares (catalog-derived residual —
+    // never an LLM-invented price). Mounting is a real catalog line.
+    if (commercial) {
+      const hardwareRounded = round0(hardwareEur);
+      const balanceEur = Math.max(0, bom.totalEur - hardwareRounded);
+      const mountLine = Math.min(round0(mountingEur), balanceEur);
+      const residual = Math.max(0, balanceEur - mountLine);
+      const dc = round0(residual * BOS_SPLIT.dcStringCabling);
+      const ac = round0(residual * BOS_SPLIT.acCombinerProtection);
+      const grid = round0(residual * BOS_SPLIT.gridConnection);
+      // Labour absorbs the rounding remainder so the lines sum EXACTLY to balance.
+      const labour = balanceEur - mountLine - dc - ac - grid;
+      const approxStrings = Math.max(1, Math.ceil(panelCount / 19));
+      bom.balanceOfSystem = [
+        {
+          item: "Flat-roof mounting system",
+          detail: mountChoice
+            ? `${mountChoice.brand} ${mountChoice.model} x${panelCount}`
+            : "ballasted flat-roof mounting",
+          eur: mountLine,
+        },
+        {
+          item: "DC string cabling & connectors",
+          detail: `${approxStrings} strings, MC4 + solar cable`,
+          eur: dc,
+        },
+        {
+          item: "AC combiner + protection",
+          detail: "string combiner, DC/AC OCPD, surge protection",
+          eur: ac,
+        },
+        {
+          item: "Grid connection",
+          detail: "metering + utility interconnection",
+          eur: grid,
+        },
+        {
+          item: "Installation labour",
+          detail: "mechanical + electrical installation & commissioning",
+          eur: labour,
+        },
+      ];
+    }
 
     // ---- Savings / payback ----
     const selfConsumed = calcSelfConsumedKwh(
@@ -743,5 +851,8 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
   // Suppress unused-var warning on horizon constant — kept for documentation.
   void NPV_HORIZON_YEARS;
 
-  return result;
+  // Additive commercial-engineering post-step (pure + deterministic). Returns
+  // its input unchanged for a residential/absent buildingType with no flat
+  // roofType, so residential composer output is byte-identical.
+  return applyCommercialEngineering(result, intake);
 }
