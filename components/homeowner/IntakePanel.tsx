@@ -131,12 +131,17 @@ export function IntakePanel({ onLocate }: Props = {}) {
   // Auto-detect: when the geocoder classifies the building (mock mode returns
   // it directly; real geocoding can derive it from OSM tags later), preselect
   // the building type + roof type. The user can still override via the cards.
-  const applyDetected = (data: { buildingType?: string; roofType?: string }) => {
+  const applyDetected = (data: { buildingType?: string; roofType?: string; country?: string }) => {
     if (data.buildingType && BUILDING_OPTIONS.some((o) => o.value === data.buildingType)) {
       setBuildingType(data.buildingType as BuildingType);
     }
     if (data.roofType === "flat" || data.roofType === "pitched") {
       setRoofType(data.roofType);
+    }
+    // Country auto-selects from the address → drives the market tariff + the
+    // display currency on the quote.
+    if (data.country && COUNTRY_OPTIONS.some((o) => o.value === data.country)) {
+      setCountry(data.country);
     }
   };
 

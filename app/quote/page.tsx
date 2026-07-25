@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getResidentialTariff } from "@/lib/api/tavily";
 import { getBuildingInsights } from "@/lib/api/solar";
 import { resolveDemoLocation, nearestDemoByCoords } from "@/data/fixtures/demo-locations";
+import { currencyForCountry } from "@/lib/currency";
 import { sizeQuoteWithRationale } from "@/lib/sizing/calculate";
 import { VariantCardStack } from "@/components/homeowner/VariantCardStack";
 import { SendToInstaller } from "@/components/homeowner/SendToInstaller";
@@ -253,7 +254,10 @@ export default async function QuotePage({
         </header>
 
         {/* The three variants */}
-        <VariantCardStack variants={sizing.variants} />
+        <VariantCardStack
+          variants={sizing.variants}
+          defaultCurrency={currencyForCountry(intake.country)}
+        />
 
         {/* Send to installer — POSTs the real lead with this homeowner's intake + live roof segments */}
         <SendToInstaller
