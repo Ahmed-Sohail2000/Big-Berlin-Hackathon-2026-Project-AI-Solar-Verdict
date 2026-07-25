@@ -38,6 +38,7 @@ import {
   type VariantSourceUrls,
 } from "@/lib/sizing/compose-from-market";
 import { CesiumRoofView } from "@/components/homeowner/CesiumRoofView";
+import { SyntheticRoof3D } from "@/components/homeowner/SyntheticRoof3D";
 import { BillOfMaterials } from "@/components/installer/BillOfMaterials";
 import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
@@ -699,6 +700,21 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const engineering =
     liveSizing?.engineering ?? lead.publicPreview.sizing.engineering ?? null;
 
+  // In MOCK_MODE there are no Google keys / 3D-tile coverage, so the photoreal
+  // Cesium view can't load (it 403s/404s against tile.googleapis.com). Show the
+  // same fully-offline synthetic 3D the homeowner side uses instead of erroring.
+  const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === "true";
+  const prefsBuildingType = (
+    lead.publicPreview.preferences as { buildingType?: string }
+  ).buildingType;
+  const roofVariant: "residential" | "commercial" =
+    prefsBuildingType && prefsBuildingType !== "residential" ? "commercial" : "residential";
+  const syntheticAreaM2 =
+    liveTotalAreaM2 ??
+    lead.publicPreview.sizing.usableRoofAreaM2 ??
+    lead.publicPreview.roofFacts.totalAreaM2 ??
+    undefined;
+
   // Simple 25-year ROI from existing Variant fields only:
   // lifetime savings = monthlySavingsEur × 12 × 25, vs the installed total.
   const lifetimeSavingsEur = selectedVariant.monthlySavingsEur * 12 * 25;
@@ -845,30 +861,46 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     // screen but doesn't go absurd on a 1440p+ monitor.
     <div className="flex min-h-0 flex-1 flex-col bg-[#0A0E1A]">
       <section className="relative h-[min(720px,70vh)] flex-shrink-0 overflow-hidden border-b border-[#2A3038] bg-[#0A0E1A]">
-        <CesiumRoofView
-          coords={{ lat: lead.privateDetails.lat, lng: lead.privateDetails.lng }}
-          address={unlocked ? lead.privateDetails.address : lead.publicPreview.district}
-          onViewerReady={setCesiumViewer}
-        />
-        {/* Headless: attaches/removes panel polygons on the photoreal mesh. */}
-        <PanelOverlayCesium
-          viewer={cesiumViewer}
-          panels={combinedOverlayPanels}
-          desiredCount={combinedOverlayPanels.length}
-          removedKeys={removedPanelKeys}
-          onPanelClick={togglePanel}
-          visible={showPanels}
-          editMode={editMode}
-          onPanelAdd={addManualPanel}
-          defaultAzimuthDegrees={dominantAzimuthDegrees}
-          defaultPitchDegrees={dominantPitchDegrees}
-          roofSegments={overlayRoofSegments}
-        />
-        <SunHeatmapCesium
-          viewer={cesiumViewer}
-          heatmap={heatmapMeta}
-          visible={sunLayerVisible && heatmapStatus === "ready"}
-        />
+        {isMock ? (
+          // Offline simulation — no Google tiles, no console error. Shows the
+          // building with the AI panel layout; live photoreal + interactive
+          // panel-editing take over automatically once real keys are set.
+          <SyntheticRoof3D
+            address={lead.publicPreview.district}
+            totalAreaM2={syntheticAreaM2}
+            panelCount={panelCount}
+            variant={roofVariant}
+            tiltDegrees={engineering?.tiltDegrees}
+            rowSpacingMeters={engineering?.rowSpacingMeters}
+          />
+        ) : (
+          <>
+            <CesiumRoofView
+              coords={{ lat: lead.privateDetails.lat, lng: lead.privateDetails.lng }}
+              address={unlocked ? lead.privateDetails.address : lead.publicPreview.district}
+              onViewerReady={setCesiumViewer}
+            />
+            {/* Headless: attaches/removes panel polygons on the photoreal mesh. */}
+            <PanelOverlayCesium
+              viewer={cesiumViewer}
+              panels={combinedOverlayPanels}
+              desiredCount={combinedOverlayPanels.length}
+              removedKeys={removedPanelKeys}
+              onPanelClick={togglePanel}
+              visible={showPanels}
+              editMode={editMode}
+              onPanelAdd={addManualPanel}
+              defaultAzimuthDegrees={dominantAzimuthDegrees}
+              defaultPitchDegrees={dominantPitchDegrees}
+              roofSegments={overlayRoofSegments}
+            />
+            <SunHeatmapCesium
+              viewer={cesiumViewer}
+              heatmap={heatmapMeta}
+              visible={sunLayerVisible && heatmapStatus === "ready"}
+            />
+          </>
+        )}
         <div className="pointer-events-none absolute left-4 top-4 rounded-md border border-[#2A3038] bg-[#0A0E1A]/80 px-3 py-2 text-xs backdrop-blur">
           <div className="font-semibold text-[#F7F8FA]">{lead.publicPreview.district}</div>
           <div className="mt-0.5 text-[#9BA3AF]">Exact rooftop model · customer details gated</div>
