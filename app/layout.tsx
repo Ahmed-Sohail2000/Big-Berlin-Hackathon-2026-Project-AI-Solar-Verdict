@@ -9,7 +9,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Verdict — installer-DNA solar quote intelligence",
-  description: "Type your address, see what your roof is worth. Trained on 1,277 real Reonic projects.",
+  description: "Enter an address and get an AI-engineered solar proposal in seconds.",
 };
 
 export const viewport: Viewport = {

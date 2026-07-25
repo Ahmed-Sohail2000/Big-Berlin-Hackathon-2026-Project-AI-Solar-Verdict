@@ -149,32 +149,6 @@ export function VariantCardStack({ variants, onSelect, defaultCurrency = "EUR" }
                   <div className="text-[10px] uppercase tracking-wider text-[#5B6470] mb-1">Why this wins</div>
                   <div className="text-xs text-[#9BA3AF] leading-relaxed">{v.objection}</div>
                 </div>
-
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-[#5B6470] mb-1.5">Comparable projects</div>
-                  <div className="flex gap-2">
-                    {v.citedProjectIds.map((pid) => (
-                      <span key={pid} className="rounded border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 text-[11px] text-[#9BA3AF]">
-                        #{pid.replace("P-", "")}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-1 grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Margin</div>
-                    <div className="text-sm tabular-nums">{v.marginPct}%</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Win rate</div>
-                    <div className="text-sm tabular-nums">{v.winRatePct}%</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Confidence</div>
-                    <div className="text-sm tabular-nums">{Math.round(v.confidence * 100)}%</div>
-                  </div>
-                </div>
               </div>
             )}
           </article>

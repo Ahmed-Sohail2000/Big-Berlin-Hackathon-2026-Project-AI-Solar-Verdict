@@ -146,7 +146,7 @@ export function InstallerReview() {
 
       {/* Cited projects */}
       <div className="flex flex-col gap-2">
-        <span className="text-xs uppercase tracking-wider text-[#9BA3AF]">Cited Reonic projects</span>
+        <span className="text-xs uppercase tracking-wider text-[#9BA3AF]">Comparable projects</span>
         <div className="flex gap-2">
           {v.citedProjectIds.map((pid) => (
             <span
