@@ -140,19 +140,41 @@ export function BillOfMaterials({ bom, sourceUrls }: Props) {
     });
   }
 
-  // Balance of system: only price it when EVERY hardware line above was
-  // derivable, so it is exactly totalEur minus hardware. Never invent.
-  const allPriced = rows.every((r) => r.lineEur !== null);
-  const hardwareSum = rows.reduce((sum, r) => sum + (r.lineEur ?? 0), 0);
-  const bosEur =
-    allPriced && bom.totalEur - hardwareSum >= 0 ? bom.totalEur - hardwareSum : null;
-  rows.push({
-    key: "bos",
-    item: "Balance of system & installation",
-    spec: "DC cabling, AC protection, grid connection, installation labor",
-    qty: "—",
-    lineEur: bosEur,
-  });
+  // Balance of system.
+  //
+  // Preferred path (commercial proposals): the BoM carries itemised
+  // balanceOfSystem lines — mounting, DC string cabling, AC combiner /
+  // protection, grid connection, installation labour — each with its own
+  // catalog-derived `eur`. Render every line as-is; a missing `eur` shows
+  // "Included" (never invented).
+  //
+  // Fallback path (residential BoMs with no balanceOfSystem): synthesise a
+  // single line priced at totalEur minus derived hardware, and only when
+  // every hardware line above was itself derivable so the arithmetic is honest.
+  const bos = bom.balanceOfSystem;
+  if (bos && bos.length > 0) {
+    bos.forEach((line, idx) => {
+      rows.push({
+        key: `bos-${idx}`,
+        item: line.item,
+        spec: line.detail ?? "—",
+        qty: "—",
+        lineEur: typeof line.eur === "number" ? line.eur : null,
+      });
+    });
+  } else {
+    const allPriced = rows.every((r) => r.lineEur !== null);
+    const hardwareSum = rows.reduce((sum, r) => sum + (r.lineEur ?? 0), 0);
+    const bosEur =
+      allPriced && bom.totalEur - hardwareSum >= 0 ? bom.totalEur - hardwareSum : null;
+    rows.push({
+      key: "bos",
+      item: "Balance of system & installation",
+      spec: "DC cabling, AC protection, grid connection, installation labor",
+      qty: "—",
+      lineEur: bosEur,
+    });
+  }
 
   return (
     <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
@@ -222,8 +244,9 @@ export function BillOfMaterials({ bom, sourceUrls }: Props) {
       </div>
 
       <p className="mt-2 text-[11px] leading-snug text-[#5B6470]">
-        Line prices are hardware list prices (ex VAT) from the market catalog; the
-        balance-of-system line carries everything else so the lines always sum to the total.
+        {bos && bos.length > 0
+          ? "Line prices are catalog-derived (ex VAT); balance-of-system covers mounting, DC/AC wiring, grid connection and labour."
+          : "Line prices are hardware list prices (ex VAT) from the market catalog; the balance-of-system line carries everything else so the lines always sum to the total."}
       </p>
     </section>
   );

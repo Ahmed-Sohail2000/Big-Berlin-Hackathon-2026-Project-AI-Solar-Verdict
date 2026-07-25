@@ -17,7 +17,15 @@ import {
   Sparkles,
   Sun,
 } from "lucide-react";
-import type { GridType, Intake, RoofSegment, Strategy, Variant } from "@/lib/contracts";
+import type {
+  BuildingType,
+  GridType,
+  Intake,
+  RoofSegment,
+  RoofType,
+  Strategy,
+  Variant,
+} from "@/lib/contracts";
 import type { LeadRecord } from "@/lib/leads/store";
 import {
   allocatePanelsToSegments,
@@ -31,6 +39,7 @@ import {
 } from "@/lib/sizing/compose-from-market";
 import { CesiumRoofView } from "@/components/homeowner/CesiumRoofView";
 import { BillOfMaterials } from "@/components/installer/BillOfMaterials";
+import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
 import {
@@ -105,6 +114,22 @@ const GRID_TYPE_LABEL: Record<GridType, string> = {
   on_grid: "On-grid",
   off_grid: "Off-grid",
   hybrid: "Hybrid",
+};
+
+/** Display labels for the building use class (read-only from intake). */
+const BUILDING_TYPE_LABEL: Record<BuildingType, string> = {
+  residential: "Residential",
+  office: "Office",
+  retail: "Retail",
+  warehouse: "Warehouse",
+  industrial: "Industrial",
+  agricultural: "Agricultural",
+};
+
+/** Display labels for the roof geometry class (read-only from intake). */
+const ROOF_TYPE_LABEL: Record<RoofType, string> = {
+  pitched: "Pitched roof",
+  flat: "Flat roof",
 };
 
 type AzimuthBucket = "E" | "SE" | "S" | "SW" | "W" | "N" | "flat";
@@ -649,6 +674,31 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     "on_grid";
   const gridTypeLabel = GRID_TYPE_LABEL[gridType];
 
+  // Building-use + roof-geometry classes are additive intake fields. They may
+  // ride on lead.intake (installer-created manual leads) or on the forwarded
+  // preferences; when neither carries them we render no badge rather than
+  // guessing. Read defensively so legacy residential leads keep working.
+  const leadIntakeExtra = (
+    lead as typeof lead & {
+      intake?: { buildingType?: BuildingType; roofType?: RoofType };
+    }
+  ).intake;
+  const prefsExtra = lead.publicPreview.preferences as typeof lead.publicPreview.preferences & {
+    buildingType?: BuildingType;
+    roofType?: RoofType;
+  };
+  const buildingType: BuildingType | undefined =
+    leadIntakeExtra?.buildingType ?? prefsExtra.buildingType;
+  const roofType: RoofType | undefined = leadIntakeExtra?.roofType ?? prefsExtra.roofType;
+  const buildingTypeLabel = buildingType ? BUILDING_TYPE_LABEL[buildingType] : null;
+  const roofTypeLabel = roofType ? ROOF_TYPE_LABEL[roofType] : null;
+
+  // Engineering parameters: prefer the freshly-recomputed live sizing, fall
+  // back to the sizing snapshot stored on the lead. Absent on residential /
+  // pitched results — the panel is simply not rendered in that case.
+  const engineering =
+    liveSizing?.engineering ?? lead.publicPreview.sizing.engineering ?? null;
+
   // Simple 25-year ROI from existing Variant fields only:
   // lifetime savings = monthlySavingsEur × 12 × 25, vs the installed total.
   const lifetimeSavingsEur = selectedVariant.monthlySavingsEur * 12 * 25;
@@ -892,11 +942,21 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               customer: size, hardware, yield, grid type, roof faces. */}
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-sm font-semibold text-[#F7F8FA]">System design</h2>
                 <span className="rounded-md border border-[#3DAEFF]/40 bg-[#3DAEFF]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#3DAEFF]">
                   {gridTypeLabel}
                 </span>
+                {buildingTypeLabel ? (
+                  <span className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#9BA3AF]">
+                    {buildingTypeLabel}
+                  </span>
+                ) : null}
+                {roofTypeLabel ? (
+                  <span className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#9BA3AF]">
+                    {roofTypeLabel}
+                  </span>
+                ) : null}
               </div>
               <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#5B6470]">
                 {liveLoading ? (
@@ -1132,6 +1192,10 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               AI pre-fetched via Google Solar API · roof + sun + demand profile attached to this lead.
             </p>
           </section>
+
+          {/* Engineering parameters — only rendered when the sizer emitted the
+              commercial design block (flat-roof / commercial results). */}
+          {engineering ? <EngineeringPanel engineering={engineering} /> : null}
 
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
