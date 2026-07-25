@@ -476,7 +476,10 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best Margin",
     batteryFactor: 0.6,
     inverterFactor: 0.85,
-    sizeFactor: 0.82,
+    // Three distinct size tiers so the options differ in system size (and
+    // therefore savings + payback), even when the roof caps the largest one:
+    // margin = leanest, closeRate = balanced, ltv = fills the roof.
+    sizeFactor: 0.75,
     eurPerKwp: 1700,
     eurPerKwhBattery: 600,
     eurHeatPump: 0,
@@ -497,7 +500,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best Close Rate",
     batteryFactor: 1.0,
     inverterFactor: 0.95,
-    sizeFactor: 1.0,
+    sizeFactor: 0.88,
     eurPerKwp: 1800,
     eurPerKwhBattery: 700,
     eurHeatPump: 0,
@@ -518,7 +521,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best LTV",
     batteryFactor: 1.4,
     inverterFactor: 1.05,
-    sizeFactor: 1.18,
+    sizeFactor: 1.0,
     eurPerKwp: 2000,
     eurPerKwhBattery: 900,
     eurHeatPump: 18000,
