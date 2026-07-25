@@ -34,8 +34,10 @@ test.describe("MOCK_MODE homeowner → installer flow", () => {
     // --- Fill consumption + preferences, submit ---
     // Bill input defaults to "per month" (contract field is monthlyBillEur).
     await page.locator("#bill").fill("120");
-    await page.getByRole("radiogroup", { name: "Battery?" }).getByRole("radio", { name: "Yes" }).click();
-    await page.getByRole("button", { name: /see my verdict/i }).click();
+    // Commercial intake: building type defaults to "Office", so the battery
+    // preference reframes to "Battery / backup?".
+    await page.getByRole("radiogroup", { name: "Battery / backup?" }).getByRole("radio", { name: "Yes" }).click();
+    await page.getByRole("button", { name: /get my proposal/i }).click();
 
     // --- Quote page: fixture-measured, 3 variants ---
     await expect(page).toHaveURL(/\/quote\?/, { timeout: 15_000 });
