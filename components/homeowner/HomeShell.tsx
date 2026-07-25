@@ -2,19 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { IntakePanel } from "./IntakePanel";
-import { CesiumRoofView } from "./CesiumRoofView";
+import { RoofPanelOverlay3D } from "./RoofPanelOverlay3D";
 import { RuhrCinematic } from "./RuhrCinematic";
 import { LiveRoofFacts } from "./LiveRoofFacts";
 import { InstallerApprovedToast } from "./InstallerApprovedToast";
 import { LayerSwitcher, type LayerMode } from "./LayerSwitcher";
 import { HeatmapView } from "./HeatmapView";
 import { RoofPreview } from "./RoofPreview";
+import type { SolarPanelEntry } from "@/components/installer/PanelOverlayCesium";
 import type { RoofSegment } from "@/lib/contracts";
 
 interface RoofFactsState {
   segments: RoofSegment[];
   totalAreaM2: number;
   imageryDate?: { year: number; month: number; day: number };
+  /** Google's AI per-panel placement (top 200 by yield). Optional — absent when
+   *  the Solar API / fixture has no per-panel data for this location. */
+  solarPanels?: SolarPanelEntry[];
   source: "live" | "cached" | "mock";
   status?: "ok" | "error" | "timeout";
   message?: string;
@@ -58,7 +62,13 @@ export function HomeShell() {
         <div className="relative h-[42vh] lg:h-auto bg-[#0A0E1A] border-b lg:border-b-0 lg:border-r border-[#1A1F2A] overflow-hidden">
           {coords ? (
             <>
-              {layerMode === "photoreal" && <CesiumRoofView coords={coords} address={address} />}
+              {layerMode === "photoreal" && (
+                <RoofPanelOverlay3D
+                  coords={coords}
+                  address={address}
+                  panels={roofFacts?.solarPanels ?? []}
+                />
+              )}
               {layerMode === "heatmap"   && <HeatmapView coords={coords} address={address} />}
               {layerMode === "map"       && <RoofPreview coords={coords} address={address} />}
               <LayerSwitcher value={layerMode} onChange={setLayerMode} />

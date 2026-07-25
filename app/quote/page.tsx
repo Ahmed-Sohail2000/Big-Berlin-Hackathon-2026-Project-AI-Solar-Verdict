@@ -27,6 +27,11 @@ interface SearchParams {
   wantsHeatPump?: string;
   annualKwh?: string;
   gridType?: string;
+  // Commercial intake fields (additive per the frozen contract).
+  buildingType?: string;
+  country?: string;
+  roofType?: string;
+  peakDemandKw?: string;
 }
 
 interface GeocodeOk {
@@ -165,6 +170,22 @@ export default async function QuotePage({
   const wantsHeatPump = asPref(params.wantsHeatPump);
   const parsedAnnualKwh = params.annualKwh ? Number(params.annualKwh) : undefined;
 
+  // Commercial intake fields (additive per the frozen contract).
+  const BUILDING_TYPES: Intake["buildingType"][] = [
+    "residential",
+    "office",
+    "retail",
+    "warehouse",
+    "industrial",
+    "agricultural",
+  ];
+  const buildingType = BUILDING_TYPES.includes(params.buildingType as Intake["buildingType"])
+    ? (params.buildingType as Intake["buildingType"])
+    : undefined;
+  const roofType =
+    params.roofType === "flat" || params.roofType === "pitched" ? params.roofType : undefined;
+  const parsedPeakDemandKw = params.peakDemandKw ? Number(params.peakDemandKw) : undefined;
+
   const intake: Intake = {
     address: geo?.formattedAddress ?? params.address,
     lat: geo?.lat ?? 0,
@@ -176,6 +197,11 @@ export default async function QuotePage({
     wantsBattery,
     wantsHeatPump,
     gridType: params.gridType === "off_grid" || params.gridType === "hybrid" ? params.gridType : "on_grid",
+    buildingType,
+    country: params.country || undefined,
+    roofType,
+    peakDemandKw:
+      parsedPeakDemandKw && parsedPeakDemandKw > 0 ? parsedPeakDemandKw : undefined,
     heating: (params.heating ?? "gas") as Intake["heating"],
     goal: (params.goal ?? "lower_bill") as Intake["goal"],
   };
@@ -243,6 +269,10 @@ export default async function QuotePage({
             wantsBattery: intake.wantsBattery,
             wantsHeatPump: intake.wantsHeatPump,
             gridType: intake.gridType,
+            buildingType: intake.buildingType,
+            country: intake.country,
+            roofType: intake.roofType,
+            peakDemandKw: intake.peakDemandKw,
             heating: intake.heating,
             goal: intake.goal,
           }}

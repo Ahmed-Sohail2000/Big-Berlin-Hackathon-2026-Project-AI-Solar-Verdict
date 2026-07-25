@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { GridType, Preference } from "@/lib/contracts";
+import type { BuildingType, GridType, Preference, RoofType } from "@/lib/contracts";
 import { tryParseCoords } from "@/lib/parse-coords";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { VoiceMemoRecorder, type VoiceMemo } from "./VoiceMemoRecorder";
@@ -16,23 +16,53 @@ const PREF_OPTIONS: { value: Preference; label: string }[] = [
   { value: "idk", label: "Not sure" },
 ];
 
+const BUILDING_OPTIONS: { value: BuildingType; label: string; hint: string }[] = [
+  { value: "office", label: "Office", hint: "Workplaces and mixed commercial floors." },
+  { value: "retail", label: "Retail", hint: "Shops, showrooms, and supermarkets." },
+  { value: "warehouse", label: "Warehouse", hint: "Logistics and distribution roofs." },
+  { value: "industrial", label: "Industrial", hint: "Manufacturing and processing plants." },
+  { value: "agricultural", label: "Agricultural", hint: "Barns, sheds, and farm buildings." },
+  { value: "residential", label: "Residential", hint: "Homes and small multi-unit roofs." },
+];
+
+// ISO-3166 alpha-2 for the tariff/market context. "other" ships as free text so
+// the sizer's country-aware market lookup can fall back to a sane default.
+const COUNTRY_OPTIONS: { value: string; label: string }[] = [
+  { value: "DE", label: "Germany" },
+  { value: "GB", label: "United Kingdom" },
+  { value: "FR", label: "France" },
+  { value: "ES", label: "Spain" },
+  { value: "IT", label: "Italy" },
+  { value: "NL", label: "Netherlands" },
+  { value: "PL", label: "Poland" },
+  { value: "US", label: "United States" },
+  { value: "AE", label: "United Arab Emirates" },
+  { value: "AU", label: "Australia" },
+  { value: "other", label: "Other / not listed" },
+];
+
+const ROOF_OPTIONS: { value: RoofType; label: string }[] = [
+  { value: "flat", label: "Flat" },
+  { value: "pitched", label: "Pitched" },
+];
+
 const GRID_OPTIONS: { value: GridType; title: string; description: string }[] = [
   {
     value: "on_grid",
-    title: "On-grid (recommended)",
+    title: "Grid-tied (recommended)",
     description:
-      "Connected to the public grid — export surplus power for feed-in payment. The standard German setup.",
+      "Connected to the public grid — export surplus and draw when needed. The standard commercial setup.",
   },
   {
     value: "hybrid",
     title: "Hybrid",
     description:
-      "Grid-connected with a battery — keep power during outages, use more of your own solar.",
+      "Grid-tied with battery storage — peak shaving on demand charges and backup during outages.",
   },
   {
     value: "off_grid",
     title: "Off-grid",
-    description: "Fully independent — needs a large battery bank. For remote homes.",
+    description: "Fully islanded — needs large storage. For remote sites without a grid connection.",
   },
 ];
 
@@ -42,9 +72,13 @@ interface Props {
 
 export function IntakePanel({ onLocate }: Props = {}) {
   const [address, setAddress] = useState("");
+  const [buildingType, setBuildingType] = useState<BuildingType>("office");
+  const [country, setCountry] = useState<string>("DE");
+  const [roofType, setRoofType] = useState<RoofType>("flat");
   const [billPeriod, setBillPeriod] = useState<BillPeriod>("month");
   const [billValue, setBillValue] = useState<string>("");
   const [annualKwh, setAnnualKwh] = useState<string>("");
+  const [peakDemandKw, setPeakDemandKw] = useState<string>("");
   const [gridType, setGridType] = useState<GridType>("on_grid");
   const [wantsBattery, setWantsBattery] = useState<Preference>("idk");
   const [wantsHeatPump, setWantsHeatPump] = useState<Preference>("idk");
@@ -136,6 +170,8 @@ export function IntakePanel({ onLocate }: Props = {}) {
   // Validation: address + at least one consumption value (bill, or the optional annual kWh)
   const billNum = Number(billValue);
   const kwhNum = Number(annualKwh);
+  const peakNum = Number(peakDemandKw);
+  const isCommercial = buildingType !== "residential";
   const canSubmit = address.trim().length > 0 && (billNum > 0 || kwhNum > 0);
 
   const submit = () => {
@@ -160,11 +196,20 @@ export function IntakePanel({ onLocate }: Props = {}) {
       goal: "lower_bill",
       evPref,
       wantsBattery,
-      wantsHeatPump,
+      // Heat pump is residential-only in this UI. For commercial building types
+      // we hide the control but keep the contract field populated with a sane
+      // default ("no") so downstream sizing stays deterministic.
+      wantsHeatPump: isCommercial ? "no" : wantsHeatPump,
       gridType,
+      buildingType,
+      country,
+      roofType,
     });
     if (kwhNum > 0) {
       params.set("annualKwh", String(kwhNum));
+    }
+    if (peakNum > 0) {
+      params.set("peakDemandKw", String(peakNum));
     }
     // Voice memo (when present) is too big for URL params; stash it in
     // sessionStorage so the /quote page's SendToInstaller picks it up
@@ -190,17 +235,17 @@ export function IntakePanel({ onLocate }: Props = {}) {
       {/* Hero copy — compact */}
       <div className="flex flex-col gap-1">
         <h2 className="text-xl sm:text-2xl lg:text-[26px] font-semibold leading-tight tracking-tight">
-          Your home can earn more than you&rsquo;re losing on energy.
+          Design a solar system for your building in seconds.
         </h2>
         <p className="text-xs sm:text-sm text-[#9BA3AF]">
-          Based on 1,277 real Reonic projects.
+          Engineered from real satellite roof data &mdash; benchmarked on real installer projects.
         </p>
       </div>
 
       {/* Address */}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="address" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-          Address
+          Enter your building address
         </label>
         <AddressAutocomplete
           id="address"
@@ -236,11 +281,97 @@ export function IntakePanel({ onLocate }: Props = {}) {
         )}
       </div>
 
+      {/* Building type — drives commercial-vs-residential sizing defaults */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Building type
+        </span>
+        <div
+          role="radiogroup"
+          aria-label="Building type"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+        >
+          {BUILDING_OPTIONS.map((opt) => {
+            const active = buildingType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setBuildingType(opt.value)}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 ${
+                  active
+                    ? "border-[#3DAEFF] bg-[#3DAEFF]/10 text-[#F7F8FA]"
+                    : "border-[#2A3038] bg-[#12161C] text-[#9BA3AF] hover:border-[#3DAEFF]/40"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          {BUILDING_OPTIONS.find((o) => o.value === buildingType)?.hint}
+        </p>
+      </div>
+
+      {/* Roof type + country — market and geometry context */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+            Roof type
+          </span>
+          <div
+            role="radiogroup"
+            aria-label="Roof type"
+            className="flex rounded-lg border border-[#2A3038] overflow-hidden"
+          >
+            {ROOF_OPTIONS.map((opt) => {
+              const active = roofType === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setRoofType(opt.value)}
+                  className={`flex-1 px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 focus:relative ${
+                    active
+                      ? "bg-[#3DAEFF] text-[#0A0E1A]"
+                      : "text-[#9BA3AF] hover:text-[#F7F8FA]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="country" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+            Country
+          </label>
+          <select
+            id="country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 py-2.5 text-sm text-[#F7F8FA] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          >
+            {COUNTRY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Electricity bill (€) — guided, with a per month / per year toggle */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <label htmlFor="bill" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-            Electricity bill
+            Business electricity bill
           </label>
           <div
             role="radiogroup"
@@ -288,7 +419,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
             step={5}
             value={billValue}
             onChange={(e) => setBillValue(e.target.value)}
-            placeholder={billPeriod === "month" ? "120" : "1440"}
+            placeholder={billPeriod === "month" ? "2500" : "30000"}
             className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] pl-7 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
@@ -296,7 +427,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
           </span>
         </div>
         <p className="text-[11px] text-[#5B6470]">
-          It&rsquo;s on your electricity bill (Stromrechnung) &mdash; the total &euro; amount you pay.
+          The total amount your business pays for electricity &mdash; from your utility invoice.
         </p>
       </div>
 
@@ -314,7 +445,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
             step={100}
             value={annualKwh}
             onChange={(e) => setAnnualKwh(e.target.value)}
-            placeholder="4500"
+            placeholder="120000"
             className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
@@ -322,7 +453,33 @@ export function IntakePanel({ onLocate }: Props = {}) {
           </span>
         </div>
         <p className="text-[11px] text-[#5B6470]">
-          Optional: total kWh per year &mdash; also on your bill. Improves sizing accuracy.
+          Annual kWh from your utility bill &mdash; sharpens system sizing accuracy.
+        </p>
+      </div>
+
+      {/* Optional peak demand — demand-charge-aware sizing */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="peak" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Peak demand <span className="normal-case text-[#5B6470]">(optional, advanced)</span>
+        </label>
+        <div className="relative">
+          <input
+            id="peak"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={5}
+            value={peakDemandKw}
+            onChange={(e) => setPeakDemandKw(e.target.value)}
+            placeholder="150"
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-16 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            kW
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          The demand-charge (kW) figure on your bill &mdash; lets the AI size for peak-demand reduction.
         </p>
       </div>
 
@@ -359,21 +516,26 @@ export function IntakePanel({ onLocate }: Props = {}) {
         </div>
       </div>
 
-      {/* Three preference fields: battery, heat pump, EV */}
+      {/* Preference fields. Battery + EV reframe to commercial (backup / peak
+          shaving and fleet charging). Heat pump is residential-only — hidden
+          for commercial building types; the contract field is defaulted to
+          "no" at submit so sizing stays deterministic. */}
       <ThreeStateRow
-        label="Battery?"
+        label={isCommercial ? "Battery / backup?" : "Battery?"}
         value={wantsBattery}
         onChange={setWantsBattery}
         groupName="battery"
       />
+      {!isCommercial && (
+        <ThreeStateRow
+          label="Heat pump?"
+          value={wantsHeatPump}
+          onChange={setWantsHeatPump}
+          groupName="heatpump"
+        />
+      )}
       <ThreeStateRow
-        label="Heat pump?"
-        value={wantsHeatPump}
-        onChange={setWantsHeatPump}
-        groupName="heatpump"
-      />
-      <ThreeStateRow
-        label="EV charger?"
+        label={isCommercial ? "Fleet EV charging?" : "EV charger?"}
         value={evPref}
         onChange={setEvPref}
         groupName="ev"
@@ -392,11 +554,11 @@ export function IntakePanel({ onLocate }: Props = {}) {
         disabled={!canSubmit}
         className="mt-2 w-full rounded-lg bg-[#3DAEFF] px-5 py-4 text-base font-semibold text-[#0A0E1A] transition-all hover:bg-[#2EA1F0] disabled:bg-[#1F3A52] disabled:text-[#5B6470] disabled:cursor-not-allowed"
       >
-        See my Verdict →
+        Get my proposal →
       </button>
 
       <p className="text-[11px] text-[#5B6470] text-center">
-        non-binding · no phone call · the installer reviews your Verdict and quotes within 24h
+        non-binding · a certified installer reviews the engineered design before you commit
       </p>
     </div>
   );

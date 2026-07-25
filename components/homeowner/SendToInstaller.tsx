@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { Send, Check } from "lucide-react";
-import type { Goal, GridType, Heating, Preference, RoofSegment } from "@/lib/contracts";
+import type {
+  BuildingType,
+  Goal,
+  GridType,
+  Heating,
+  Preference,
+  RoofSegment,
+  RoofType,
+} from "@/lib/contracts";
 
 interface Props {
   address: string;
@@ -19,6 +27,14 @@ interface Props {
     wantsHeatPump?: Preference;
     /** Grid connection type (new homeowner UI). */
     gridType?: GridType;
+    /** Commercial building use class (commercial intake). */
+    buildingType?: BuildingType;
+    /** ISO-3166 code / free-text country for tariff/market context. */
+    country?: string;
+    /** Roof geometry class (commercial intake). */
+    roofType?: RoofType;
+    /** Optional commercial peak demand in kW. */
+    peakDemandKw?: number;
     heating: Heating;
     goal: Goal;
   };
@@ -69,6 +85,10 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
           wantsBattery: intake.wantsBattery,
           wantsHeatPump: intake.wantsHeatPump,
           gridType: intake.gridType,
+          buildingType: intake.buildingType,
+          country: intake.country,
+          roofType: intake.roofType,
+          peakDemandKw: intake.peakDemandKw,
           heating: intake.heating,
           goal: intake.goal,
           roofSegments,
