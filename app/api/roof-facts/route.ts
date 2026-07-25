@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBuildingInsights } from "@/lib/api/solar";
+import { mockRoofFacts } from "@/data/fixtures/demo-locations";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,25 @@ export async function GET(req: NextRequest) {
       { error: "lat/lng must be valid finite numbers within Earth bounds" },
       { status: 400 },
     );
+  }
+
+  // MOCK_MODE: serve the nearest curated demo roof (already in RoofSegment
+  // shape). Carries the classification/buildingType so the client picks the
+  // right 3D variant. When MOCK_MODE is off, the real Solar-API path below runs
+  // unchanged — swapping to paid is a config flip, not a code change.
+  if (process.env.MOCK_MODE === "true") {
+    const mock = mockRoofFacts(lat, lng);
+    return NextResponse.json({
+      segments: mock.segments,
+      totalAreaM2: mock.totalAreaM2,
+      imageryDate: { year: 2023, month: 7, day: 1 },
+      buildingType: mock.buildingType,
+      classification: mock.classification,
+      roofType: mock.roofType,
+      source: "mock",
+      status: "ok",
+      message: `Simulated roof · ${mock.label}`,
+    });
   }
 
   try {

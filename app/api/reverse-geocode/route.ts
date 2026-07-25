@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
+import { nearestDemoByCoords } from "@/data/fixtures/demo-locations";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,17 @@ export async function GET(req: NextRequest) {
   }
 
   if (process.env.MOCK_MODE === 'true') {
-    return NextResponse.json(MOCK_GEOCODE_RESULT);
+    // "Use my location" → snap to the nearest curated demo location.
+    const loc = nearestDemoByCoords(Number(lat), Number(lng));
+    return NextResponse.json({
+      address: loc.label,
+      lat: loc.lat,
+      lng: loc.lng,
+      buildingType: loc.buildingType,
+      classification: loc.classification,
+      roofType: loc.roofType,
+      country: loc.country,
+    });
   }
 
   if (!key) {

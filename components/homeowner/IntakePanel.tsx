@@ -104,6 +104,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
           const data = await res.json();
           if (data.address) {
             setAddress(data.address);
+            applyDetected(data);
             onLocate?.({ lat: data.lat, lng: data.lng }, data.address);
           } else {
             setLocationError(data.error ?? "Couldn't find an address near you.");
@@ -126,6 +127,18 @@ export function IntakePanel({ onLocate }: Props = {}) {
     );
   };
 
+  // Auto-detect: when the geocoder classifies the building (mock mode returns
+  // it directly; real geocoding can derive it from OSM tags later), preselect
+  // the building type + roof type. The user can still override via the cards.
+  const applyDetected = (data: { buildingType?: string; roofType?: string }) => {
+    if (data.buildingType && BUILDING_OPTIONS.some((o) => o.value === data.buildingType)) {
+      setBuildingType(data.buildingType as BuildingType);
+    }
+    if (data.roofType === "flat" || data.roofType === "pitched") {
+      setRoofType(data.roofType);
+    }
+  };
+
   const forwardGeocode = async (q: string) => {
     if (q.trim().length < 4) return;
 
@@ -141,6 +154,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
       const res = await fetch(`/api/forward-geocode?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (typeof data.lat === "number" && typeof data.lng === "number") {
+        applyDetected(data);
         onLocate?.({ lat: data.lat, lng: data.lng }, data.address);
       }
     } catch {

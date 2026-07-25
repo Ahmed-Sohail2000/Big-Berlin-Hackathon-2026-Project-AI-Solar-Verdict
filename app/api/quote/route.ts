@@ -8,7 +8,7 @@ import {
   IntakeSchema,
   RoofTypeSchema,
 } from "@/data/schema";
-import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
+import { resolveDemoLocation, nearestDemoByCoords } from "@/data/fixtures/demo-locations";
 import { getBuildingInsights } from "@/lib/api/solar";
 import { getResidentialTariff } from "@/lib/api/tavily";
 import { sizeQuote } from "@/lib/sizing/calculate";
@@ -43,13 +43,14 @@ interface GeocodeResult {
 }
 
 async function geocode(address: string): Promise<GeocodeResult | null> {
-  // MOCK_MODE resolves every query to the fixture location (Reichstag) so the
-  // fixture-backed chain returns real data offline — same as /api/forward-geocode.
+  // MOCK_MODE resolves the query to the nearest curated demo location so the
+  // sizing runs on the right roof — same resolver as /api/forward-geocode.
   if (process.env.MOCK_MODE === "true") {
+    const loc = resolveDemoLocation(address);
     return {
-      lat: MOCK_GEOCODE_RESULT.lat,
-      lng: MOCK_GEOCODE_RESULT.lng,
-      formattedAddress: MOCK_GEOCODE_RESULT.address,
+      lat: loc.lat,
+      lng: loc.lng,
+      formattedAddress: loc.label,
       apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
     };
   }
@@ -89,6 +90,14 @@ async function getRoofSegments(
   lat: number,
   lng: number,
 ): Promise<{ segments: RoofSegment[]; apiStatus: ApiStatus }> {
+  // MOCK_MODE: nearest curated demo roof (same source as /api/roof-facts).
+  if (process.env.MOCK_MODE === "true") {
+    const loc = nearestDemoByCoords(lat, lng);
+    return {
+      segments: loc.roofSegments,
+      apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
+    };
+  }
   // Goes through lib/api/solar so MOCK_MODE fixtures, the 4s timeout, and the
   // cached fallback all apply — identical behavior to /api/roof-facts.
   try {

@@ -23,6 +23,9 @@ interface RoofFactsState {
   source: "live" | "cached" | "mock";
   status?: "ok" | "error" | "timeout";
   message?: string;
+  /** Detected building class (mock mode) — drives the residential/commercial 3D. */
+  classification?: "residential" | "commercial";
+  roofType?: "pitched" | "flat";
 }
 
 export function HomeShell() {
@@ -74,6 +77,7 @@ export function HomeShell() {
                     address={address}
                     totalAreaM2={roofFacts?.totalAreaM2}
                     panelCount={roofFacts?.solarPanels?.length}
+                    variant={roofFacts?.classification ?? "commercial"}
                   />
                 ) : (
                   <RoofPanelOverlay3D

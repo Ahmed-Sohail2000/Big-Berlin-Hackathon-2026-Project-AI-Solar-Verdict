@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getResidentialTariff } from "@/lib/api/tavily";
 import { getBuildingInsights } from "@/lib/api/solar";
-import { MOCK_GEOCODE_RESULT } from "@/lib/api/mock-location";
+import { resolveDemoLocation, nearestDemoByCoords } from "@/data/fixtures/demo-locations";
 import { sizeQuoteWithRationale } from "@/lib/sizing/calculate";
 import { VariantCardStack } from "@/components/homeowner/VariantCardStack";
 import { SendToInstaller } from "@/components/homeowner/SendToInstaller";
@@ -45,10 +45,13 @@ async function geocode(address: string, key: string | undefined): Promise<Geocod
   // /api/forward-geocode behavior — this keeps the fixture-backed chain
   // (geocode → getBuildingInsights → sizing) returning real data offline.
   if (process.env.MOCK_MODE === "true") {
+    // Resolve the typed address to the nearest curated demo location so the
+    // sizing runs on the right roof (residential vs commercial).
+    const loc = resolveDemoLocation(address);
     return {
-      lat: MOCK_GEOCODE_RESULT.lat,
-      lng: MOCK_GEOCODE_RESULT.lng,
-      formattedAddress: MOCK_GEOCODE_RESULT.address,
+      lat: loc.lat,
+      lng: loc.lng,
+      formattedAddress: loc.label,
     };
   }
   if (!key) return null;
@@ -87,6 +90,12 @@ interface BuildingInsightsLite {
 }
 
 async function getRoofMeasurement(lat: number, lng: number): Promise<RoofMeasurement> {
+  // MOCK_MODE: measure the nearest curated demo roof — same source the
+  // /api/roof-facts mock branch uses, so the pane and the quote agree.
+  if (process.env.MOCK_MODE === "true") {
+    const loc = nearestDemoByCoords(lat, lng);
+    return { segments: loc.roofSegments, source: "mock" };
+  }
   // Goes through lib/api/solar so MOCK_MODE fixtures, the 4s timeout, and the
   // cached fallback all apply — identical behavior to /api/roof-facts.
   try {

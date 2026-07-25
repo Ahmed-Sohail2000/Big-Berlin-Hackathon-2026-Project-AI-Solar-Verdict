@@ -27,6 +27,7 @@ interface Props {
   panelCount?: number;
   tiltDegrees?: number;
   rowSpacingMeters?: number;
+  variant?: "residential" | "commercial";
 }
 
 /**
@@ -41,6 +42,7 @@ export function SyntheticRoof3D({
   panelCount,
   tiltDegrees,
   rowSpacingMeters,
+  variant = "commercial",
 }: Props) {
   return (
     <div className="absolute inset-0">
@@ -50,6 +52,7 @@ export function SyntheticRoof3D({
           panelCount={panelCount}
           tiltDegrees={tiltDegrees}
           rowSpacingMeters={rowSpacingMeters}
+          variant={variant}
         />
       </Suspense>
 
@@ -59,7 +62,7 @@ export function SyntheticRoof3D({
           <span className="absolute inline-flex h-full w-full animate-ping rounded-md bg-[#F2B84B] opacity-60" />
           <span className="relative inline-flex h-2 w-2 rounded-md bg-[#F2B84B]" />
         </span>
-        Simulation · commercial roof array
+        Simulation · {variant === "residential" ? "residential rooftop" : "commercial roof array"}
       </div>
 
       {/* Address + panel-count caption (bottom-left, above the roof-facts strip) */}
