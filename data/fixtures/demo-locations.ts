@@ -58,7 +58,7 @@ const BERLIN_RESIDENTIAL: DemoLocation = {
   roofType: "pitched",
   totalAreaM2: 84,
   eurPerKwh: 0.35,
-  keywords: ["residential", "home", "house", "haus", "wohnhaus", "villa", "apartment", "weissensee", "weißensee"],
+  keywords: ["berlin", "residential", "home", "house", "haus", "wohnhaus", "apartment", "weissensee", "weißensee"],
   // Classic gable roof: one sunny south face, one weak north face.
   roofSegments: [
     { pitchDegrees: 38, azimuthDegrees: 180, areaMeters2: 42, annualSunshineHours: 1150 },
@@ -78,14 +78,59 @@ const BERLIN_COMMERCIAL: DemoLocation = {
   roofType: "flat",
   totalAreaM2: 860,
   eurPerKwh: 0.22,
-  keywords: ["commercial", "office", "warehouse", "logistik", "logistikhalle", "halle", "industrial", "retail", "business", "lager", "lichtenberg"],
+  keywords: ["berlin", "commercial", "warehouse", "logistik", "logistikhalle", "halle", "industrial", "lager", "lichtenberg"],
   // Large near-flat commercial roof — a single broad plane.
   roofSegments: [
     { pitchDegrees: 4, azimuthDegrees: 180, areaMeters2: 860, annualSunshineHours: 1080 },
   ],
 };
 
-export const DEMO_LOCATIONS: DemoLocation[] = [BERLIN_RESIDENTIAL, BERLIN_COMMERCIAL];
+// --- Dubai, UAE -------------------------------------------------------------
+
+const DUBAI_RESIDENTIAL: DemoLocation = {
+  id: "dubai-residential",
+  label: "Villa, Arabian Ranches, Dubai, UAE",
+  city: "Dubai",
+  country: "AE",
+  lat: 25.0522,
+  lng: 55.2708,
+  classification: "residential",
+  buildingType: "residential",
+  roofType: "pitched",
+  totalAreaM2: 120,
+  // UAE retail tariff is low (~DEWA 30 fils/kWh) — cheap power, huge sun.
+  eurPerKwh: 0.08,
+  keywords: ["dubai", "villa", "house", "home", "residential", "ranches", "arabian", "uae"],
+  roofSegments: [
+    { pitchDegrees: 28, azimuthDegrees: 180, areaMeters2: 60, annualSunshineHours: 2100 },
+    { pitchDegrees: 28, azimuthDegrees: 0, areaMeters2: 60, annualSunshineHours: 1500 },
+  ],
+};
+
+const DUBAI_COMMERCIAL: DemoLocation = {
+  id: "dubai-commercial",
+  label: "Office building, Business Bay, Dubai, UAE",
+  city: "Dubai",
+  country: "AE",
+  lat: 25.1857,
+  lng: 55.2645,
+  classification: "commercial",
+  buildingType: "office",
+  roofType: "flat",
+  totalAreaM2: 1200,
+  eurPerKwh: 0.06,
+  keywords: ["dubai", "office", "commercial", "business", "bay", "downtown", "tower", "uae"],
+  roofSegments: [
+    { pitchDegrees: 3, azimuthDegrees: 180, areaMeters2: 1200, annualSunshineHours: 2050 },
+  ],
+};
+
+export const DEMO_LOCATIONS: DemoLocation[] = [
+  BERLIN_RESIDENTIAL,
+  BERLIN_COMMERCIAL,
+  DUBAI_RESIDENTIAL,
+  DUBAI_COMMERCIAL,
+];
 
 // --- Resolvers --------------------------------------------------------------
 

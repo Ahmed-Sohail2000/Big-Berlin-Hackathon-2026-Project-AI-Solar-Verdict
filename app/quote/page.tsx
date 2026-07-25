@@ -215,12 +215,24 @@ export default async function QuotePage({
     goal: (params.goal ?? "lower_bill") as Intake["goal"],
   };
 
-  const tariff = await getResidentialTariff({
-    lat: intake.lat,
-    lng: intake.lng,
-    postcode: extractPostcode(intake.address),
-    city: extractCity(intake.address),
-  });
+  // Tariff drives the savings math. In MOCK_MODE use the resolved demo
+  // location's country tariff (so Dubai financials use the UAE rate, not a
+  // German one) and skip the live Tavily call; otherwise look it up live.
+  const demoLoc =
+    process.env.MOCK_MODE === "true" ? nearestDemoByCoords(intake.lat, intake.lng) : null;
+  const tariff = demoLoc
+    ? {
+        eurPerKwh: demoLoc.eurPerKwh,
+        source: "fallback" as const,
+        query: `${demoLoc.city} demo tariff`,
+        latencyMs: 0,
+      }
+    : await getResidentialTariff({
+        lat: intake.lat,
+        lng: intake.lng,
+        postcode: extractPostcode(intake.address),
+        city: extractCity(intake.address),
+      });
 
   const sizing = await sizeQuoteWithRationale(intake, segmentsForSizing, tariff.eurPerKwh);
 
