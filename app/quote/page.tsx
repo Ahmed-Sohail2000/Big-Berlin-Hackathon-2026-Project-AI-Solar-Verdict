@@ -5,7 +5,6 @@ import { resolveDemoLocation, nearestDemoByCoords } from "@/data/fixtures/demo-l
 import { sizeQuoteWithRationale } from "@/lib/sizing/calculate";
 import { VariantCardStack } from "@/components/homeowner/VariantCardStack";
 import { SendToInstaller } from "@/components/homeowner/SendToInstaller";
-import { SpouseShareCard } from "@/components/homeowner/SpouseShareCard";
 import { tryParseCoords } from "@/lib/parse-coords";
 import type { Intake, Preference, RoofSegment } from "@/lib/contracts";
 
@@ -126,13 +125,6 @@ function extractCity(address: string): string | undefined {
   return match?.[1]?.trim();
 }
 
-function formatTariffLine(tariff: Awaited<ReturnType<typeof getResidentialTariff>>): string {
-  const value = `€${tariff.eurPerKwh.toFixed(2)}/kWh`;
-  if (tariff.source === "tavily-live") {
-    return `Tariff source: Tavily live (${value}) · ${tariff.query}`;
-  }
-  return `Tariff: default ${value}`;
-}
 
 export default async function QuotePage({
   searchParams,
@@ -170,11 +162,6 @@ export default async function QuotePage({
   const measuredSegments = measurement.segments;
   const hasSolarMeasurement = measuredSegments.length > 0;
   const segmentsForSizing = hasSolarMeasurement ? measuredSegments : [fallbackSegment];
-  const measurementLabel = !hasSolarMeasurement
-    ? "Estimated (Solar API has no coverage here)"
-    : measurement.source === "live"
-      ? "Measured live"
-      : "Measured (cached simulation data)";
 
   const evPref = asPref(params.evPref, params.ev === "true" ? "yes" : "idk");
   const wantsBattery = asPref(params.wantsBattery);
@@ -253,32 +240,15 @@ export default async function QuotePage({
       <section className="flex-1 max-w-3xl w-full mx-auto px-6 sm:px-8 py-6 lg:py-12 flex flex-col gap-8">
         {/* Address + intake summary */}
         <header className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span
-              className={`flex items-center gap-1.5 rounded border bg-[#0A0E1A] px-2 py-0.5 ${
-                measurement.source === "live" && hasSolarMeasurement
-                  ? "border-[#62E6A7]/40 text-[#62E6A7]"
-                  : "border-[#F2B84B]/40 text-[#F2B84B]"
-              }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-md ${
-                  measurement.source === "live" && hasSolarMeasurement ? "bg-[#62E6A7]" : "bg-[#F2B84B]"
-                }`}
-              />
-              {measurementLabel}
-            </span>
-            <span className="text-[#5B6470]">·</span>
-            <span className="text-[#9BA3AF] truncate">{intake.address}</span>
+          <div className="flex items-center gap-2 text-xs text-[#9BA3AF]">
+            <span className="truncate">{intake.address}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-semibold leading-tight">
-            Three Reonic-grounded options for your home.
+            Your three system options.
           </h1>
           <p className="text-sm text-[#9BA3AF]">
-            {sizing.systemKwp} kWp system &middot; {sizing.annualKwh.toLocaleString()} kWh/yr demand &middot; {measuredSegments.length} roof face{measuredSegments.length !== 1 ? "s" : ""} measured
-          </p>
-          <p className="text-xs text-[#9BA3AF]">
-            {formatTariffLine(tariff)}
+            Each one is AI-engineered from your roof &mdash; pick the option that fits, then send it
+            to a certified solar installer.
           </p>
         </header>
 
@@ -307,17 +277,9 @@ export default async function QuotePage({
           roofSegments={segmentsForSizing}
         />
 
-        {/* Spouse-share viral moment */}
-        <SpouseShareCard
-          monthlySavingsEur={sizing.variants[1].monthlySavingsEur}
-          paybackYears={sizing.variants[1].paybackYears}
-          systemKwp={sizing.systemKwp}
-          address={intake.address}
-        />
-
         {/* Trust line */}
         <p className="text-[11px] text-[#5B6470] text-center">
-          Recommendations cite real Reonic projects from your region. No purchase made — installer reviews and confirms.
+          No purchase made &mdash; a certified solar installer reviews and confirms the design.
         </p>
       </section>
     </main>

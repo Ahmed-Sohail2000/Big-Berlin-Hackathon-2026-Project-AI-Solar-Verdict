@@ -50,7 +50,11 @@ function expectBaselineSizingShape(result: SizingResult) {
   for (const v of result.variants) {
     expect(v.id).toBeTruthy();
     expect(v.label).toBeTruthy();
-    expect(v.bom.panels.count).toBe(result.panelCount);
+    // Variants now differ in system size (margin leaner, ltv fuller), so each
+    // count is near — but not necessarily equal to — the base, and always fits
+    // the roof.
+    expect(v.bom.panels.count).toBeGreaterThan(0);
+    expect(v.bom.panels.count).toBeLessThanOrEqual(Math.ceil(result.panelCount * 1.35));
     expect(v.bom.panels.wp).toBeGreaterThan(0);
     expect(v.bom.inverter.kw).toBeGreaterThan(0);
     expect(v.bom.totalEur).toBeGreaterThan(0);

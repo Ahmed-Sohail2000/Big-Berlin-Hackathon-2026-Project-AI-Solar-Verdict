@@ -446,6 +446,10 @@ interface VariantConfig {
   batteryFactor: number;
   /** Multiplier on inverter sizing relative to system kWp. */
   inverterFactor: number;
+  /** Per-variant system-size multiplier vs the base roof-fit panel count, so the
+   *  three options differ in SIZE (margin = leaner/cheaper, ltv = fuller/more
+   *  savings), not just price. Clamped to what the roof physically fits. */
+  sizeFactor: number;
   /** € per installed kWp (panels + inverter + mounting + labour). */
   eurPerKwp: number;
   /** € per installed kWh of battery. */
@@ -472,6 +476,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best Margin",
     batteryFactor: 0.6,
     inverterFactor: 0.85,
+    sizeFactor: 0.82,
     eurPerKwp: 1700,
     eurPerKwhBattery: 600,
     eurHeatPump: 0,
@@ -492,6 +497,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best Close Rate",
     batteryFactor: 1.0,
     inverterFactor: 0.95,
+    sizeFactor: 1.0,
     eurPerKwp: 1800,
     eurPerKwhBattery: 700,
     eurHeatPump: 0,
@@ -512,6 +518,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best LTV",
     batteryFactor: 1.4,
     inverterFactor: 1.05,
+    sizeFactor: 1.18,
     eurPerKwp: 2000,
     eurPerKwhBattery: 900,
     eurHeatPump: 18000,
@@ -783,23 +790,34 @@ export function sizeQuote(
     hasBattery: batteryKwhRecommended > 0,
   });
 
-  const variantInputBase = {
-    intake,
-    panelCount,
-    systemKwp: systemKwpRaw,
-    baselineBatteryKwh,
-    dailyKwh,
-    annualKwh: annualKwhRaw,
-    annualYieldKwh,
-    heatPumpKwBaseline,
-    shouldOfferHp,
-    eurPerKwh: eurPerKwhOverride ?? EUR_PER_KWH_RESIDENTIAL,
+  // Build each variant at its OWN system size (cfg.sizeFactor), clamped to what
+  // the roof physically fits — so the three options differ in size, savings, and
+  // price, not just price. The recommended (closeRate) sizeFactor is 1.0.
+  const eurPerKwhForVariants = eurPerKwhOverride ?? EUR_PER_KWH_RESIDENTIAL;
+  const roofCap = panelFitMax > 0 ? panelFitMax : panelCount;
+  const buildAtFactor = (cfg: VariantConfig): Variant => {
+    const vPanelCount = Math.max(1, Math.min(roofCap, Math.round(panelCount * cfg.sizeFactor)));
+    const vSystemKwp = vPanelCount * PANEL_KW;
+    const vYield = round0(vSystemKwp * ANNUAL_YIELD_KWH_PER_KWP);
+    return buildVariant({
+      cfg,
+      intake,
+      panelCount: vPanelCount,
+      systemKwp: vSystemKwp,
+      baselineBatteryKwh,
+      dailyKwh,
+      annualKwh: annualKwhRaw,
+      annualYieldKwh: vYield,
+      heatPumpKwBaseline,
+      shouldOfferHp,
+      eurPerKwh: eurPerKwhForVariants,
+    });
   };
 
   const variants: [Variant, Variant, Variant] = [
-    buildVariant({ cfg: VARIANT_CONFIGS[0], ...variantInputBase }),
-    buildVariant({ cfg: VARIANT_CONFIGS[1], ...variantInputBase }),
-    buildVariant({ cfg: VARIANT_CONFIGS[2], ...variantInputBase }),
+    buildAtFactor(VARIANT_CONFIGS[0]),
+    buildAtFactor(VARIANT_CONFIGS[1]),
+    buildAtFactor(VARIANT_CONFIGS[2]),
   ];
 
   const result: SizingResultWithAllocations = {
@@ -832,7 +850,16 @@ export function sizeQuote(
   }
 
   result.variants = result.variants.map((variant) => {
-    const recommendation = recommendBom(result, intake, variant.strategy);
+    // Recommend + price each variant at its OWN size, so cost, savings, and
+    // payback all describe one consistent system (not the base size).
+    const vPanelCount = variant.bom.panels.count;
+    const vResult = {
+      ...result,
+      panelCount: vPanelCount,
+      systemKwp: round1(vPanelCount * PANEL_KW),
+      annualYieldKwh: round0(vPanelCount * PANEL_KW * ANNUAL_YIELD_KWH_PER_KWP),
+    };
+    const recommendation = recommendBom(vResult, intake, variant.strategy);
     const annualSavingsEur = variant.monthlySavingsEur * 12;
     return {
       ...variant,

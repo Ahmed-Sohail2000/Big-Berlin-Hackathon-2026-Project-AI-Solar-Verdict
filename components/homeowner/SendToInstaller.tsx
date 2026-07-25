@@ -142,7 +142,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
           </>
         ) : (
           <>
-            <Send size={16} /> Send to a certified Reonic installer
+            <Send size={16} /> Send to a certified solar installer
           </>
         )}
       </button>

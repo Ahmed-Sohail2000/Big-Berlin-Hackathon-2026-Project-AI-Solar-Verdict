@@ -40,25 +40,19 @@ test.describe("MOCK_MODE homeowner → installer flow", () => {
     await page.getByRole("radiogroup", { name: "Battery?" }).getByRole("radio", { name: "Yes" }).click();
     await page.getByRole("button", { name: /get my proposal/i }).click();
 
-    // --- Quote page: fixture-measured, 3 variants ---
+    // --- Quote page: 3 distinct options ---
     await expect(page).toHaveURL(/\/quote\?/, { timeout: 15_000 });
-    await expect(page.getByText("Three Reonic-grounded options for your home.")).toBeVisible({
+    await expect(page.getByText("Your three system options.")).toBeVisible({
       timeout: 15_000,
     });
-    // Badge must be honest: fixture data, not "Measured live".
-    await expect(page.getByText("Measured (cached simulation data)")).toBeVisible();
     await expect(page.getByText("Best Margin")).toBeVisible();
     await expect(page.getByText(/Best Close Rate/)).toBeVisible();
     await expect(page.getByText("Best LTV")).toBeVisible();
-    // Demand is derived from the bill and the tariff — the tariff is live when
-    // TAVILY_API_KEY is set and falls back otherwise, so the exact kWh is
-    // environment-dependent. Assert the label, not a specific number.
-    await expect(page.getByText(/kWh\/yr demand/)).toBeVisible();
 
     // --- Send the lead ---
     // The quote page is server-rendered; clicking before React hydrates is a
     // no-op. Retry the click until the component actually reacts.
-    const sendButton = page.getByRole("button", { name: /send to a certified reonic installer/i });
+    const sendButton = page.getByRole("button", { name: /send to a certified solar installer/i });
     await expect(async () => {
       await sendButton.click();
       await expect(page.getByText(/Verdict sent|Sending Verdict packet/)).toBeVisible({
