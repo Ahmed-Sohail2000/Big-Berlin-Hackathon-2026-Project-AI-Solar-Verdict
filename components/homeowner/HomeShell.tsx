@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { IntakePanel } from "./IntakePanel";
 import { RoofPanelOverlay3D } from "./RoofPanelOverlay3D";
+import { SyntheticRoof3D } from "./SyntheticRoof3D";
 import { RuhrCinematic } from "./RuhrCinematic";
 import { LiveRoofFacts } from "./LiveRoofFacts";
 import { InstallerApprovedToast } from "./InstallerApprovedToast";
@@ -30,6 +31,11 @@ export function HomeShell() {
   const [roofFacts, setRoofFacts] = useState<RoofFactsState | null>(null);
   const [loadingRoof, setLoadingRoof] = useState(false);
   const [layerMode, setLayerMode] = useState<LayerMode>("photoreal");
+
+  // In MOCK_MODE there are no Google keys, so the photoreal Cesium tiles can't
+  // load. Instead of the "3D disabled" placeholder, render a fully-offline
+  // procedural 3D simulation of the commercial roof + AI panel array.
+  const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === "true";
 
   useEffect(() => {
     if (!coords) {
@@ -62,13 +68,20 @@ export function HomeShell() {
         <div className="relative h-[42vh] lg:h-auto bg-[#0A0E1A] border-b lg:border-b-0 lg:border-r border-[#1A1F2A] overflow-hidden">
           {coords ? (
             <>
-              {layerMode === "photoreal" && (
-                <RoofPanelOverlay3D
-                  coords={coords}
-                  address={address}
-                  panels={roofFacts?.solarPanels ?? []}
-                />
-              )}
+              {layerMode === "photoreal" &&
+                (isMock ? (
+                  <SyntheticRoof3D
+                    address={address}
+                    totalAreaM2={roofFacts?.totalAreaM2}
+                    panelCount={roofFacts?.solarPanels?.length}
+                  />
+                ) : (
+                  <RoofPanelOverlay3D
+                    coords={coords}
+                    address={address}
+                    panels={roofFacts?.solarPanels ?? []}
+                  />
+                ))}
               {layerMode === "heatmap"   && <HeatmapView coords={coords} address={address} />}
               {layerMode === "map"       && <RoofPreview coords={coords} address={address} />}
               <LayerSwitcher value={layerMode} onChange={setLayerMode} />
