@@ -79,6 +79,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
   const [billValue, setBillValue] = useState<string>("");
   const [annualKwh, setAnnualKwh] = useState<string>("");
   const [peakDemandKw, setPeakDemandKw] = useState<string>("");
+  const [priceEurKwh, setPriceEurKwh] = useState<string>("");
   const [gridType, setGridType] = useState<GridType>("on_grid");
   const [wantsBattery, setWantsBattery] = useState<Preference>("idk");
   const [wantsHeatPump, setWantsHeatPump] = useState<Preference>("idk");
@@ -185,6 +186,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
   const billNum = Number(billValue);
   const kwhNum = Number(annualKwh);
   const peakNum = Number(peakDemandKw);
+  const priceNum = Number(priceEurKwh);
   const isCommercial = buildingType !== "residential";
   const canSubmit = address.trim().length > 0 && (billNum > 0 || kwhNum > 0);
 
@@ -224,6 +226,9 @@ export function IntakePanel({ onLocate }: Props = {}) {
     }
     if (peakNum > 0) {
       params.set("peakDemandKw", String(peakNum));
+    }
+    if (priceNum > 0) {
+      params.set("price", String(priceNum));
     }
     // Voice memo (when present) is too big for URL params; stash it in
     // sessionStorage so the /quote page's SendToInstaller picks it up
@@ -330,55 +335,12 @@ export function IntakePanel({ onLocate }: Props = {}) {
         </p>
       </div>
 
-      {/* Roof type + country — market and geometry context */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-            Roof type
-          </span>
-          <div
-            role="radiogroup"
-            aria-label="Roof type"
-            className="flex rounded-lg border border-[#2A3038] overflow-hidden"
-          >
-            {ROOF_OPTIONS.map((opt) => {
-              const active = roofType === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setRoofType(opt.value)}
-                  className={`flex-1 px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 focus:relative ${
-                    active
-                      ? "bg-[#3DAEFF] text-[#0A0E1A]"
-                      : "text-[#9BA3AF] hover:text-[#F7F8FA]"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="country" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-            Country
-          </label>
-          <select
-            id="country"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 py-2.5 text-sm text-[#F7F8FA] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
-          >
-            {COUNTRY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* ── Section: Your electricity ── */}
+      <div className="mt-1 flex items-center gap-3 border-t border-[#1A1F2A] pt-4">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#3DAEFF]">
+          Your electricity
+        </span>
+        <span className="h-px flex-1 bg-[#1A1F2A]" />
       </div>
 
       {/* Electricity bill (€) — guided, with a per month / per year toggle */}
@@ -471,6 +433,33 @@ export function IntakePanel({ onLocate }: Props = {}) {
         </p>
       </div>
 
+      {/* Optional electricity price — overrides the market tariff so the savings
+          match the customer's actual bill (works for any country). */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="price" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Electricity price <span className="normal-case text-[#5B6470]">(optional)</span>
+        </label>
+        <div className="relative">
+          <input
+            id="price"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step={0.01}
+            value={priceEurKwh}
+            onChange={(e) => setPriceEurKwh(e.target.value)}
+            placeholder="0.30"
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            &euro; / kWh
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          What you pay per kWh &mdash; overrides the market rate so the savings match your bill.
+        </p>
+      </div>
+
       {/* Optional peak demand — demand-charge-aware sizing */}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="peak" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
@@ -495,6 +484,64 @@ export function IntakePanel({ onLocate }: Props = {}) {
         <p className="text-[11px] text-[#5B6470]">
           The demand-charge (kW) figure on your bill &mdash; lets the AI size for peak-demand reduction.
         </p>
+      </div>
+
+      {/* ── Section: System configuration ── */}
+      <div className="mt-1 flex items-center gap-3 border-t border-[#1A1F2A] pt-4">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#3DAEFF]">
+          System configuration
+        </span>
+        <span className="h-px flex-1 bg-[#1A1F2A]" />
+      </div>
+
+      {/* Roof type + country — geometry + market context (auto-detected from
+          the address; installer/customer can override). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">Roof type</span>
+          <div
+            role="radiogroup"
+            aria-label="Roof type"
+            className="flex rounded-lg border border-[#2A3038] overflow-hidden"
+          >
+            {ROOF_OPTIONS.map((opt) => {
+              const active = roofType === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setRoofType(opt.value)}
+                  className={`flex-1 px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 focus:relative ${
+                    active
+                      ? "bg-[#3DAEFF] text-[#0A0E1A]"
+                      : "text-[#9BA3AF] hover:text-[#F7F8FA]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="country" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+            Country
+          </label>
+          <select
+            id="country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 py-2.5 text-sm text-[#F7F8FA] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          >
+            {COUNTRY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Grid connection type */}

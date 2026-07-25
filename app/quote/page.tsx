@@ -32,6 +32,8 @@ interface SearchParams {
   country?: string;
   roofType?: string;
   peakDemandKw?: string;
+  /** Customer-entered €/kWh price — overrides the market tariff. */
+  price?: string;
 }
 
 interface GeocodeOk {
@@ -220,7 +222,7 @@ export default async function QuotePage({
   // German one) and skip the live Tavily call; otherwise look it up live.
   const demoLoc =
     process.env.MOCK_MODE === "true" ? nearestDemoByCoords(intake.lat, intake.lng) : null;
-  const tariff = demoLoc
+  const baseTariff = demoLoc
     ? {
         eurPerKwh: demoLoc.eurPerKwh,
         source: "fallback" as const,
@@ -233,6 +235,11 @@ export default async function QuotePage({
         postcode: extractPostcode(intake.address),
         city: extractCity(intake.address),
       });
+
+  // A customer-entered price overrides the market rate (works for any country).
+  const userPrice = params.price ? Number(params.price) : undefined;
+  const tariff =
+    userPrice && userPrice > 0 ? { ...baseTariff, eurPerKwh: userPrice } : baseTariff;
 
   const sizing = await sizeQuoteWithRationale(intake, segmentsForSizing, tariff.eurPerKwh);
 

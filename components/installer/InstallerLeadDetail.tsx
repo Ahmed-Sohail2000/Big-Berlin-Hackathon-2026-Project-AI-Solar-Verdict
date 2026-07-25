@@ -1035,9 +1035,30 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-[#F7F8FA]">Financial proposal</h2>
-              <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
-                €{selectedVariant.bom.totalEur.toLocaleString()}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
+                  €{selectedVariant.bom.totalEur.toLocaleString()}
+                </span>
+                {/* Email the proposal — opens the installer's mail client with a
+                    prefilled summary (mailto, no backend). Installer adds the
+                    recipient and clicks send. */}
+                <a
+                  href={`mailto:?subject=${encodeURIComponent(
+                    `Solar proposal — ${panelCount} panels, €${selectedVariant.bom.totalEur.toLocaleString()}`,
+                  )}&body=${encodeURIComponent(
+                    `AI-engineered solar proposal (${selectedVariant.label}):\n\n` +
+                      `• System: ${panelCount} × ${selectedVariant.bom.panels.wp} Wp ${selectedVariant.bom.panels.brand} ${selectedVariant.bom.panels.model}\n` +
+                      `• Total price: €${selectedVariant.bom.totalEur.toLocaleString()}\n` +
+                      `• Monthly savings: €${selectedVariant.monthlySavingsEur.toLocaleString()}\n` +
+                      `• Payback: ${selectedVariant.paybackYears} years\n` +
+                      `• 25-year ROI: ${roiPct >= 0 ? "+" : ""}${roiPct}%\n\n` +
+                      `Prepared with Verdict.`,
+                  )}`}
+                  className="rounded-md border border-[#2A3038] px-2.5 py-1 text-[11px] font-medium text-[#9BA3AF] transition-colors hover:border-[#3DAEFF]/50 hover:text-[#F7F8FA]"
+                >
+                  Email proposal
+                </a>
+              </div>
             </div>
 
             <div className="grid gap-2 md:grid-cols-3">
