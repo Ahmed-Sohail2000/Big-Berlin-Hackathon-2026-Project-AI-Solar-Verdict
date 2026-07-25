@@ -85,23 +85,32 @@ export default function Home() {
         {/* Hero — compact, the product itself is the next section */}
         <section className="mx-auto flex max-w-4xl flex-col items-center gap-5 px-6 pb-14 pt-14 text-center sm:pb-16 sm:pt-20">
           <span className="rounded border border-[#2A3038] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[#9BA3AF]">
-            AI solar engineering for commercial roofs
+            White-label AI solar design · license it for your team
           </span>
           <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
-            Turn any commercial roof into an AI-engineered solar proposal in{" "}
+            The AI that designs solar systems, so your team can sell them &mdash; in{" "}
             <span className="text-[#3DAEFF]">60 seconds</span>
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-[#9BA3AF] sm:text-base">
-            Verdict&rsquo;s AI reads your building&rsquo;s roof from satellite and Solar data and
-            auto-designs the system &mdash; no manual CAD. It works for a building in any country
-            with Google Solar coverage, and returns a costed, installer-ready proposal.
+            Verdict turns any address into a roof-measured, engineered, and priced proposal.
+            Solar companies license it into their own sales pipeline &mdash; the AI reads the roof
+            from satellite data, sizes the system, prices the bill of materials, and hands your
+            installers a design that&rsquo;s ready to quote. No manual CAD, any building, any country.
           </p>
-          <a
-            href="#app"
-            className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
-          >
-            Design a system
-          </a>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="#app"
+              className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
+            >
+              See it on a building
+            </a>
+            <a
+              href="/installer"
+              className="rounded-lg border border-[#2A3038] px-6 py-3 text-base font-semibold text-[#F7F8FA] transition-colors hover:border-[#3DAEFF]/50"
+            >
+              Installer dashboard
+            </a>
+          </div>
         </section>
 
         {/* The app — the existing two-pane experience, unchanged */}
