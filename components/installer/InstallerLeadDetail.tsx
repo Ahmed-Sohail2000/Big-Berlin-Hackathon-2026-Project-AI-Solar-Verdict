@@ -5,6 +5,8 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   Lock,
@@ -287,6 +289,10 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   );
   const [showPanels, setShowPanels] = useState(true);
   const [editMode, setEditMode] = useState(false);
+  // The 3D fills the dashboard; the proposal (stepper + BoM + financials +
+  // engineering + actions) lives in a right slide-over the installer can
+  // collapse to inspect the roof full-screen.
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const [sunLayerVisible, setSunLayerVisible] = useState(true);
   const [heatmapMeta, setHeatmapMeta] = useState<DataLayersMeta | null>(null);
   const [heatmapSampler, setHeatmapSampler] = useState<HeatmapSampler | null>(null);
@@ -899,8 +905,9 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     // for cursor space, then they scroll for the BoM + variant cards.
     // Map height = min(720px, 70vh) so it dominates a typical 1080p laptop
     // screen but doesn't go absurd on a 1440p+ monitor.
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0A0E1A]">
-      <section className="relative h-[min(720px,70vh)] flex-shrink-0 overflow-hidden border-b border-[#2A3038] bg-[#0A0E1A]">
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0A0E1A]">
+      {/* 3D fills the whole dashboard — the roof is the centrepiece. */}
+      <section className="relative flex-1 overflow-hidden bg-[#0A0E1A]">
         {isMock ? (
           // Offline simulation — no Google tiles, no console error. Shows the
           // building with the AI panel layout; live photoreal + interactive
@@ -1008,6 +1015,27 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         ) : null}
       </section>
 
+      {/* Slide-over toggle — always on top so the installer can collapse the
+          proposal and inspect the roof full-screen. */}
+      <button
+        type="button"
+        onClick={() => setDrawerOpen((v) => !v)}
+        aria-expanded={drawerOpen}
+        className="absolute right-3 top-3 z-40 flex items-center gap-1.5 rounded-md border border-[#2A3038] bg-[#0A0E1A]/85 px-2.5 py-1.5 text-[11px] font-medium text-[#F7F8FA] backdrop-blur transition-colors hover:border-[#3DAEFF]/50"
+      >
+        {drawerOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        {drawerOpen ? "Hide" : "Proposal"}
+      </button>
+
+      {/* Proposal slide-over — deal flow, design, financials, BoM, engineering,
+          customer + actions. Slides off-screen when collapsed so the 3D roof
+          gets the full canvas. */}
+      <aside
+        className={`absolute right-0 top-0 z-20 flex h-full w-full max-w-[620px] flex-col overflow-hidden border-l border-[#2A3038] bg-[#0A0E1A]/95 backdrop-blur transition-transform duration-300 ${
+          drawerOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+
       {/* Deal-flow stepper — horizontal numbered arrow diagram across the top.
           Step 1 (design & tools) is complete once the AI proposal loads; step 2
           (review) completes when the installer accepts the lead to unlock the
@@ -1082,7 +1110,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         );
       })()}
 
-      <section className="grid flex-1 gap-5 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:p-6">
+      <section className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
         <div className="flex min-w-0 flex-col gap-5">
           {/* 1 · System design summary — the headline an installer reads to a
               customer: size, hardware, yield, grid type, roof faces. */}
@@ -1464,7 +1492,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           </details>
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-0">
+        <aside className="flex min-w-0 flex-col gap-4">
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
@@ -1567,6 +1595,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           </section>
         </aside>
       </section>
+      </aside>
     </div>
   );
 }
