@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   Eye,
@@ -39,7 +40,10 @@ import {
 } from "@/lib/sizing/compose-from-market";
 import { CesiumRoofView } from "@/components/homeowner/CesiumRoofView";
 import { SyntheticRoof3D } from "@/components/homeowner/SyntheticRoof3D";
-import { BillOfMaterials } from "@/components/installer/BillOfMaterials";
+import {
+  BillOfMaterials,
+  type CustomLineItem,
+} from "@/components/installer/BillOfMaterials";
 import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
@@ -303,25 +307,28 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   // publicPreview's BoM was composed at lead creation time with exactly
   // panelCount panels, so its totalEur and count are by construction
   // consistent.
-  const baseVariants: Variant[] = useMemo(
-    () =>
-      lead.publicPreview.bomVariants.map((variant) => ({
-        ...variant,
-        bom: {
-          ...variant.bom,
-          panels: {
-            ...variant.bom.panels,
-            count: leadPanelCount,
-          },
-        },
-      })),
-    [lead.publicPreview.bomVariants, leadPanelCount],
-  );
+  // Each variant now carries its OWN system size (margin = fewer panels,
+  // ltv = roof-full), so we surface the native per-variant BoM instead of
+  // pinning every option to one count. Selecting an option flows its size
+  // into the 3D view, the BoM table, and the financials below.
+  const baseVariants: Variant[] = lead.publicPreview.bomVariants;
+  const variants = baseVariants;
 
-  const [selectedVariantId, setSelectedVariantId] = useState(lead.publicPreview.bomVariants[1]?.id);
+  const [selectedVariantId, setSelectedVariantId] = useState(baseVariants[1]?.id);
+  // Engineer-added BoM lines (a battery, heat pump, wiring/BoS line). Local to
+  // the session; they fold into the displayed BoM + financial total.
+  const [customItems, setCustomItems] = useState<CustomLineItem[]>([]);
   const [busy, setBusy] = useState<"accept" | "offer" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const unlocked = lead.status !== "new";
+
+  // The variant the installer picked, at its native size + price + savings,
+  // before any manual panel edits are layered on. This is what drives the 3D
+  // panel target, so a cheaper pick literally shows fewer panels on the roof.
+  const selectedBaseVariant =
+    baseVariants.find((v) => v.id === selectedVariantId) ??
+    baseVariants[1] ??
+    baseVariants[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -335,6 +342,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setRemovedPanelKeys(new Set());
     setDisabledSegmentIndexes(new Set());
     setOverlayRoofSegments([]);
+    setCustomItems([]);
     setEditMode(false);
     setHeatmapMeta(null);
     setHeatmapSampler(null);
@@ -519,6 +527,18 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setDisabledSegmentIndexes(new Set());
   }, []);
 
+  // Add / remove an engineer-supplied BoM line. Additive line items with a
+  // label + optional € that fold into the displayed total (task 5).
+  const addCustomItem = useCallback((item: { label: string; eur?: number }) => {
+    setCustomItems((prev) => [
+      ...prev,
+      { id: `custom-${Date.now()}-${prev.length}`, label: item.label, eur: item.eur },
+    ]);
+  }, []);
+  const removeCustomItem = useCallback((id: string) => {
+    setCustomItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   // Toggle a roof segment on/off in the SegmentBreakdown sidebar. AI panels
   // belonging to disabled segments are pulled from the Cesium overlay and
   // also counted out of the BoM scale, so the installer can exclude e.g.
@@ -532,10 +552,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     });
   }, []);
 
-  // Panel target used by the overlay and BoM display. Keep this tied to the
-  // stored lead preview so a live re-size cannot silently turn a 13-panel
-  // homeowner quote into a 30-panel installer overlay.
-  const sizerPanelCount = leadPanelCount;
+  // Panel target used by the overlay + BoM display: the SELECTED variant's
+  // native panel count. Switching Best Margin → Best LTV changes this, which
+  // flows into the 3D top-slice, the active count, and the financials so all
+  // three views stay consistent with the picked option.
+  const sizerPanelCount = selectedBaseVariant.bom.panels.count;
 
   const panelYieldKwh = useCallback(
     (panel: SolarPanelEntry): number => {
@@ -627,37 +648,44 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     [aiTopSlice, disabledSegmentIndexes, manuallyAddedPanels, panelYieldKwh, removedPanelKeys],
   );
   const yieldScale = totalSlicedYieldKwh > 0 ? activeYieldKwh / totalSlicedYieldKwh : 1;
-  const variants: Variant[] = useMemo(() => {
-    return baseVariants.map((v) => ({
-      ...v,
-      bom: {
-        ...v.bom,
-        panels: {
-          ...v.bom.panels,
-          count: activePanelCount,
-        },
-      },
-      monthlySavingsEur: Math.round(v.monthlySavingsEur * yieldScale),
-      // Payback scales inversely with expected production. Removing a high-
-      // yield panel now hurts more than removing a weak one.
-      paybackYears:
-        yieldScale > 0
-          ? Math.round((v.paybackYears / yieldScale) * 10) / 10
-          : v.paybackYears,
-    }));
-  }, [baseVariants, activePanelCount, yieldScale]);
 
-  // Reconcile selected variant when variants list changes (e.g. live data swaps it).
+  // Reconcile the selection if a lead swap left a stale id.
   useEffect(() => {
-    if (!variants.find((v) => v.id === selectedVariantId)) {
-      setSelectedVariantId(variants[1]?.id ?? variants[0]?.id);
+    if (!baseVariants.find((v) => v.id === selectedVariantId)) {
+      setSelectedVariantId(baseVariants[1]?.id ?? baseVariants[0]?.id);
     }
-  }, [variants, selectedVariantId]);
+  }, [baseVariants, selectedVariantId]);
 
-  const selectedVariant =
-    variants.find((variant) => variant.id === selectedVariantId) ??
-    variants[1] ??
-    variants[0];
+  // The proposal-facing variant: the picked option resized to the active panel
+  // count (native size ± the installer's manual roof edits), with savings and
+  // payback scaled by the resulting yield. Everything downstream — BoM table,
+  // financial KPIs, 3D panel count — reads from this one object, guaranteeing
+  // the three views tell one story.
+  const selectedVariant: Variant = {
+    ...selectedBaseVariant,
+    bom: {
+      ...selectedBaseVariant.bom,
+      panels: {
+        ...selectedBaseVariant.bom.panels,
+        count: activePanelCount,
+      },
+    },
+    // Payback scales inversely with expected production — removing a high-yield
+    // panel hurts more than removing a weak one.
+    monthlySavingsEur: Math.round(selectedBaseVariant.monthlySavingsEur * yieldScale),
+    paybackYears:
+      yieldScale > 0
+        ? Math.round((selectedBaseVariant.paybackYears / yieldScale) * 10) / 10
+        : selectedBaseVariant.paybackYears,
+  };
+
+  // Engineer-added BoM lines fold into the displayed total everywhere the
+  // installed price is shown (header, KPIs, ROI, the emailed proposal).
+  const customItemsTotal = customItems.reduce(
+    (sum, item) => sum + (typeof item.eur === "number" ? item.eur : 0),
+    0,
+  );
+  const effectiveTotalEur = selectedVariant.bom.totalEur + customItemsTotal;
 
   const selectedSourceUrls: VariantSourceUrls | undefined =
     liveSizing?.sourceUrls?.[selectedVariant.strategy as Strategy];
@@ -719,11 +747,9 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   // lifetime savings = monthlySavingsEur × 12 × 25, vs the installed total.
   const lifetimeSavingsEur = selectedVariant.monthlySavingsEur * 12 * 25;
   const roiPct =
-    selectedVariant.bom.totalEur > 0
+    effectiveTotalEur > 0
       ? Math.round(
-          ((lifetimeSavingsEur - selectedVariant.bom.totalEur) /
-            selectedVariant.bom.totalEur) *
-            100,
+          ((lifetimeSavingsEur - effectiveTotalEur) / effectiveTotalEur) * 100,
         )
       : 0;
 
@@ -733,12 +759,16 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const allocationYieldKwh = (liveSizing?.segmentAllocations ?? [])
     .filter((a) => a.status === "used" && !disabledSegmentIndexes.has(a.index))
     .reduce((sum, a) => sum + a.yieldKwhPerYear, 0);
+  // When we fall back to a roof-anchored yield (no live per-panel sum, e.g.
+  // MOCK_MODE), scale it to the selected variant's active size so a leaner
+  // pick reports proportionally less generation.
+  const yieldCountScale = leadPanelCount > 0 ? activePanelCount / leadPanelCount : 1;
+  const fallbackYieldKwh =
+    allocationYieldKwh > 0
+      ? allocationYieldKwh
+      : liveSizing?.annualYieldKwh ?? lead.publicPreview.sizing.annualYieldKwh;
   const estAnnualYieldKwh = Math.round(
-    activeYieldKwh > 0
-      ? activeYieldKwh
-      : allocationYieldKwh > 0
-        ? allocationYieldKwh
-        : liveSizing?.annualYieldKwh ?? lead.publicPreview.sizing.annualYieldKwh,
+    activeYieldKwh > 0 ? activeYieldKwh : fallbackYieldKwh * yieldCountScale,
   );
 
   // Compact per-face placement summary for the design card. The full
@@ -851,6 +881,16 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     const sorted = [...segs].sort((a, b) => b.areaMeters2 - a.areaMeters2);
     return Math.round(sorted[0].pitchDegrees ?? 0);
   }, [liveSegments]);
+
+  // Human-readable array orientation for the technical panel — how the AI
+  // oriented the array (dominant azimuth bucket + degrees). Always available
+  // from the roof segments, even when the commercial engineering block is not.
+  const arrayAzimuthLabel: string | undefined =
+    briefDominant === null
+      ? undefined
+      : briefDominant === "flat"
+        ? "Flat"
+        : `${briefDominant} · ${dominantAzimuthDegrees}°`;
 
   return (
     // Stacked layout: full-width photoreal map on top, dashboard scrolls
@@ -968,6 +1008,80 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         ) : null}
       </section>
 
+      {/* Deal-flow stepper — horizontal numbered arrow diagram across the top.
+          Step 1 (design & tools) is complete once the AI proposal loads; step 2
+          (review) completes when the installer accepts the lead to unlock the
+          customer; step 3 (financial proposal) completes when the offer is sent
+          / emailed. Accent = active or complete, muted = pending. */}
+      {(() => {
+        const step2Done = unlocked;
+        const step3Done = lead.status === "offer_sent" || lead.status === "closed";
+        const steps = [
+          { label: "Design & tools", state: "complete" as const },
+          {
+            label: "Review",
+            state: (step2Done ? "complete" : "active") as "complete" | "active" | "pending",
+          },
+          {
+            label: "Financial proposal",
+            state: (step3Done
+              ? "complete"
+              : step2Done
+                ? "active"
+                : "pending") as "complete" | "active" | "pending",
+          },
+        ];
+        return (
+          <nav
+            aria-label="Deal progress"
+            className="flex-shrink-0 border-b border-[#2A3038] bg-[#0A0E1A] px-5 py-3 xl:px-6"
+          >
+            <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
+              {steps.map((step, i) => {
+                const complete = step.state === "complete";
+                const active = step.state === "active";
+                const accent = complete || active;
+                return (
+                  <Fragment key={step.label}>
+                    <li className="flex items-center gap-2">
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold tabular-nums ${
+                          active
+                            ? "border-[#3DAEFF] bg-[#3DAEFF] text-[#0A0E1A]"
+                            : complete
+                              ? "border-[#3DAEFF]/50 bg-[#3DAEFF]/10 text-[#3DAEFF]"
+                              : "border-[#2A3038] bg-[#12161C] text-[#9BA3AF]"
+                        }`}
+                      >
+                        {complete ? <Check size={13} /> : i + 1}
+                      </span>
+                      <span
+                        className={`text-xs font-medium ${
+                          accent ? "text-[#F7F8FA]" : "text-[#9BA3AF]"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                    </li>
+                    {i < steps.length - 1 ? (
+                      <ArrowRight
+                        size={14}
+                        className={
+                          steps[i + 1].state === "pending"
+                            ? "text-[#2A3038]"
+                            : "text-[#3DAEFF]"
+                        }
+                        aria-hidden
+                      />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </ol>
+          </nav>
+        );
+      })()}
+
       <section className="grid flex-1 gap-5 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:p-6">
         <div className="flex min-w-0 flex-col gap-5">
           {/* 1 · System design summary — the headline an installer reads to a
@@ -1069,18 +1183,18 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               <h2 className="text-sm font-semibold text-[#F7F8FA]">Financial proposal</h2>
               <div className="flex items-center gap-3">
                 <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
-                  €{selectedVariant.bom.totalEur.toLocaleString()}
+                  €{effectiveTotalEur.toLocaleString()}
                 </span>
                 {/* Email the proposal — opens the installer's mail client with a
                     prefilled summary (mailto, no backend). Installer adds the
                     recipient and clicks send. */}
                 <a
                   href={`mailto:?subject=${encodeURIComponent(
-                    `Solar proposal — ${panelCount} panels, €${selectedVariant.bom.totalEur.toLocaleString()}`,
+                    `Solar proposal — ${panelCount} panels, €${effectiveTotalEur.toLocaleString()}`,
                   )}&body=${encodeURIComponent(
                     `AI-engineered solar proposal (${selectedVariant.label}):\n\n` +
                       `• System: ${panelCount} × ${selectedVariant.bom.panels.wp} Wp ${selectedVariant.bom.panels.brand} ${selectedVariant.bom.panels.model}\n` +
-                      `• Total price: €${selectedVariant.bom.totalEur.toLocaleString()}\n` +
+                      `• Total price: €${effectiveTotalEur.toLocaleString()}\n` +
                       `• Monthly savings: €${selectedVariant.monthlySavingsEur.toLocaleString()}\n` +
                       `• Payback: ${selectedVariant.paybackYears} years\n` +
                       `• 25-year ROI: ${roiPct >= 0 ? "+" : ""}${roiPct}%\n\n` +
@@ -1106,6 +1220,9 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                   }`}
                 >
                   <div className="text-sm font-semibold text-[#F7F8FA]">{variant.label}</div>
+                  <div className="mt-0.5 text-[11px] tabular-nums text-[#5B6470]">
+                    {variant.bom.panels.count} panels · €{variant.bom.totalEur.toLocaleString()}
+                  </div>
                   <div className="mt-1 text-xs text-[#9BA3AF]">
                     €{variant.monthlySavingsEur}/mo · {variant.paybackYears} yrs
                   </div>
@@ -1116,11 +1233,39 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               ))}
             </div>
 
+            {/* Performance / savings — the two metrics the owner cares about,
+                straight from the selected Variant. */}
+            {selectedBaseVariant.consumptionOffsetPct != null ||
+            selectedBaseVariant.selfConsumptionPct != null ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {selectedBaseVariant.consumptionOffsetPct != null ? (
+                  <div className="rounded-md border border-[#3DAEFF]/30 bg-[#3DAEFF]/5 px-3 py-2.5">
+                    <div className="text-lg font-semibold tabular-nums text-[#3DAEFF]">
+                      {selectedBaseVariant.consumptionOffsetPct}%
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#9BA3AF]">
+                      Offsets {selectedBaseVariant.consumptionOffsetPct}% of annual consumption
+                    </div>
+                  </div>
+                ) : null}
+                {selectedBaseVariant.selfConsumptionPct != null ? (
+                  <div className="rounded-md border border-[#62E6A7]/30 bg-[#62E6A7]/5 px-3 py-2.5">
+                    <div className="text-lg font-semibold tabular-nums text-[#62E6A7]">
+                      {selectedBaseVariant.selfConsumptionPct}%
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#9BA3AF]">
+                      {selectedBaseVariant.selfConsumptionPct}% self-consumed (rest exported)
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
               {[
                 {
                   label: "Total price",
-                  value: `€${selectedVariant.bom.totalEur.toLocaleString()}`,
+                  value: `€${effectiveTotalEur.toLocaleString()}`,
                 },
                 {
                   label: "Monthly savings",
@@ -1173,8 +1318,16 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             ) : null}
           </section>
 
-          {/* 3 · Full bill of materials for the selected variant. */}
-          <BillOfMaterials bom={selectedVariant.bom} sourceUrls={selectedSourceUrls} />
+          {/* 3 · Full bill of materials for the selected variant, with the
+              engineer's "+ Add item" affordance for extra battery / heat pump /
+              wiring lines. */}
+          <BillOfMaterials
+            bom={selectedVariant.bom}
+            sourceUrls={selectedSourceUrls}
+            customItems={customItems}
+            onAddCustomItem={addCustomItem}
+            onRemoveCustomItem={removeCustomItem}
+          />
 
           {/* Tavily / market-catalog attribution badge */}
           {liveSizing?.catalogScrapedAt ? (
@@ -1246,9 +1399,14 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             </p>
           </section>
 
-          {/* Engineering parameters — only rendered when the sizer emitted the
-              commercial design block (flat-roof / commercial results). */}
-          {engineering ? <EngineeringPanel engineering={engineering} /> : null}
+          {/* Engineering parameters — orientation + tilt always render (from the
+              roof segments); the commercial design block (GCR, spacing, strings,
+              DC/AC, specific yield, PR) fills in when the sizer emits it. */}
+          <EngineeringPanel
+            engineering={engineering ?? undefined}
+            azimuthLabel={arrayAzimuthLabel}
+            tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
+          />
 
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
@@ -1306,39 +1464,6 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         </div>
 
         <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-0">
-          {/* Deal-flow stepper: marketplace → review → accept → offer. Keeps
-              the accept/approve path obvious next to the proposal. */}
-          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
-              Deal flow
-            </h2>
-            <ol className="flex flex-col gap-2">
-              {[
-                { label: "Review AI proposal", done: true },
-                { label: "Accept lead to unlock customer", done: unlocked },
-                {
-                  label: "Send offer to homeowner",
-                  done: lead.status === "offer_sent" || lead.status === "closed",
-                },
-              ].map((step, i) => (
-                <li key={step.label} className="flex items-center gap-2 text-xs">
-                  <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] tabular-nums ${
-                      step.done
-                        ? "border-[#62E6A7]/40 bg-[#62E6A7]/10 text-[#62E6A7]"
-                        : "border-[#2A3038] bg-[#0A0E1A] text-[#9BA3AF]"
-                    }`}
-                  >
-                    {step.done ? <Check size={11} /> : i + 1}
-                  </span>
-                  <span className={step.done ? "text-[#F7F8FA]" : "text-[#9BA3AF]"}>
-                    {step.label}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">

@@ -15,7 +15,14 @@ import type { SizingResult } from "@/lib/contracts";
 type Engineering = NonNullable<SizingResult["engineering"]>;
 
 interface Props {
-  engineering: Engineering;
+  /** Sizer-computed design block. Absent on residential/pitched results. */
+  engineering?: Engineering;
+  /** Dominant array orientation, e.g. "S · 178°" or "Flat". Always available
+   *  from the roof segments, so the engineer sees how the AI oriented the array
+   *  even when the commercial engineering block is absent. */
+  azimuthLabel?: string;
+  /** Median roof pitch shown as array tilt when the sizer omitted tiltDegrees. */
+  tiltFallbackDegrees?: number;
 }
 
 interface Tile {
@@ -28,57 +35,73 @@ function fmt(n: number, digits = 2): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(digits);
 }
 
-export function EngineeringPanel({ engineering }: Props) {
+export function EngineeringPanel({
+  engineering,
+  azimuthLabel,
+  tiltFallbackDegrees,
+}: Props) {
   const tiles: Tile[] = [];
+  const eng = engineering ?? {};
 
-  if (typeof engineering.tiltDegrees === "number") {
-    tiles.push({ label: "Array tilt", value: `${fmt(engineering.tiltDegrees, 1)}°` });
+  // Orientation first — it's the AI placement signal an engineer reads before
+  // anything else (which way, how steep is the array).
+  if (azimuthLabel) {
+    tiles.push({
+      label: "Array orientation",
+      value: azimuthLabel,
+      hint: "AI-placed azimuth",
+    });
   }
-  if (typeof engineering.groundCoverageRatio === "number") {
+  const tiltDegrees =
+    typeof eng.tiltDegrees === "number" ? eng.tiltDegrees : tiltFallbackDegrees;
+  if (typeof tiltDegrees === "number") {
+    tiles.push({ label: "Array tilt", value: `${fmt(tiltDegrees, 1)}°` });
+  }
+  if (typeof eng.groundCoverageRatio === "number") {
     tiles.push({
       label: "Ground coverage",
-      value: fmt(engineering.groundCoverageRatio),
+      value: fmt(eng.groundCoverageRatio),
       hint: "GCR",
     });
   }
-  if (typeof engineering.rowSpacingMeters === "number") {
+  if (typeof eng.rowSpacingMeters === "number") {
     tiles.push({
       label: "Inter-row spacing",
-      value: `${fmt(engineering.rowSpacingMeters)} m`,
+      value: `${fmt(eng.rowSpacingMeters)} m`,
     });
   }
-  if (typeof engineering.dcAcRatio === "number") {
-    tiles.push({ label: "DC/AC ratio", value: `${fmt(engineering.dcAcRatio)} : 1` });
+  if (typeof eng.dcAcRatio === "number") {
+    tiles.push({ label: "DC/AC ratio", value: `${fmt(eng.dcAcRatio)} : 1` });
   }
-  if (typeof engineering.specificYieldKwhPerKwp === "number") {
+  if (typeof eng.specificYieldKwhPerKwp === "number") {
     tiles.push({
       label: "Specific yield",
-      value: `${Math.round(engineering.specificYieldKwhPerKwp).toLocaleString()} kWh/kWp`,
+      value: `${Math.round(eng.specificYieldKwhPerKwp).toLocaleString()} kWh/kWp`,
     });
   }
-  if (typeof engineering.performanceRatio === "number") {
+  if (typeof eng.performanceRatio === "number") {
     // PR is a 0..1 ratio; present as a percentage for engineer legibility.
     tiles.push({
       label: "Performance ratio",
-      value: `${Math.round(engineering.performanceRatio * 100)}%`,
+      value: `${Math.round(eng.performanceRatio * 100)}%`,
     });
   }
   if (
-    typeof engineering.modulesPerString === "number" &&
-    typeof engineering.stringCount === "number"
+    typeof eng.modulesPerString === "number" &&
+    typeof eng.stringCount === "number"
   ) {
     tiles.push({
       label: "String configuration",
-      value: `${engineering.modulesPerString} × ${engineering.stringCount}`,
+      value: `${eng.modulesPerString} × ${eng.stringCount}`,
       hint: "modules/string × strings",
     });
-  } else if (typeof engineering.modulesPerString === "number") {
+  } else if (typeof eng.modulesPerString === "number") {
     tiles.push({
       label: "Modules per string",
-      value: String(engineering.modulesPerString),
+      value: String(eng.modulesPerString),
     });
-  } else if (typeof engineering.stringCount === "number") {
-    tiles.push({ label: "String count", value: String(engineering.stringCount) });
+  } else if (typeof eng.stringCount === "number") {
+    tiles.push({ label: "String count", value: String(eng.stringCount) });
   }
 
   if (tiles.length === 0) return null;
@@ -112,8 +135,8 @@ export function EngineeringPanel({ engineering }: Props) {
         ))}
       </div>
       <p className="mt-3 text-[11px] leading-snug text-[#5B6470]">
-        Engineering parameters computed by the sizer for this roof — tilt, spacing and
-        string layout a certified installer can build to.
+        AI-computed array geometry for this roof — orientation and tilt, plus (where
+        the sizer emits them) spacing and string layout a certified installer can build to.
       </p>
     </section>
   );
