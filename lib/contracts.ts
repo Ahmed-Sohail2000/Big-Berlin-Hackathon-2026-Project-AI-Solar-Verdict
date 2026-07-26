@@ -129,6 +129,19 @@ export interface SizingResult {
     modulesPerString?: number;
     stringCount?: number;
   };
+  /**
+   * Country/climate context for the yield model — gross irradiance and the
+   * soiling + temperature losses that bring it down to the net specific yield
+   * actually used. Additive; absent for legacy call sites. Lets the UI show a
+   * credible, region-correct loss breakdown (critical for Gulf markets).
+   */
+  climate?: {
+    country: string;
+    grossKwhPerKwp: number;
+    soilingLossPct: number;
+    temperatureLossPct: number;
+    netSpecificYieldKwhPerKwp: number;
+  };
   /** Always exactly 3, in order: margin, closeRate (recommended), ltv. */
   variants: [Variant, Variant, Variant];
 }

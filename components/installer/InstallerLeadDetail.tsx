@@ -1406,6 +1406,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             engineering={engineering ?? undefined}
             azimuthLabel={arrayAzimuthLabel}
             tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
+            climate={liveSizing?.climate ?? lead.publicPreview.sizing.climate}
           />
 
           <div className="flex items-center justify-between">

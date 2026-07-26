@@ -21,6 +21,7 @@ import {
   applyCommercialEngineering,
   isCommercialBuilding,
 } from "@/lib/sizing/commercial-policy";
+import { climateProfileFor } from "@/lib/sizing/climate";
 import { enrichVariantRationale } from "@/lib/sizing/rationale";
 
 // ---------------------------------------------------------------------------
@@ -783,7 +784,13 @@ export function sizeQuote(
   const baselineBatteryKwh = calcBatteryKwh(dailyKwh);
   const batteryKwhRecommended = round1(baselineBatteryKwh);
 
-  const annualYieldKwh = round0(systemKwpRaw * ANNUAL_YIELD_KWH_PER_KWP);
+  // Country/climate-aware specific yield: Germany (and absent country) stays at
+  // 950 kWh/kWp so nothing existing changes, but the UAE etc. get their real
+  // desert irradiance net of soiling + temperature losses.
+  const climate = climateProfileFor(intake.country);
+  const specificYield = climate.netSpecificYieldKwhPerKwp;
+
+  const annualYieldKwh = round0(systemKwpRaw * specificYield);
 
   const shouldOfferHp = shouldOfferHeatPump(intake, annualKwhRaw);
   const heatPumpKwBaseline = calcHeatPumpKw(DEFAULT_HEATED_AREA_M2);
@@ -811,7 +818,7 @@ export function sizeQuote(
   const buildAtFactor = (cfg: VariantConfig): Variant => {
     const vPanelCount = Math.max(1, Math.min(roofCap, Math.round(panelCount * cfg.sizeFactor)));
     const vSystemKwp = vPanelCount * PANEL_KW;
-    const vYield = round0(vSystemKwp * ANNUAL_YIELD_KWH_PER_KWP);
+    const vYield = round0(vSystemKwp * specificYield);
     return buildVariant({
       cfg,
       intake,
@@ -842,6 +849,13 @@ export function sizeQuote(
     systemKwp,
     batteryKwh: batteryKwhRecommended,
     annualYieldKwh,
+    climate: {
+      country: climate.code,
+      grossKwhPerKwp: climate.grossKwhPerKwp,
+      soilingLossPct: climate.soilingLossPct,
+      temperatureLossPct: climate.temperatureLossPct,
+      netSpecificYieldKwhPerKwp: climate.netSpecificYieldKwhPerKwp,
+    },
     rules,
     variants,
   };
@@ -870,7 +884,7 @@ export function sizeQuote(
       ...result,
       panelCount: vPanelCount,
       systemKwp: round1(vPanelCount * PANEL_KW),
-      annualYieldKwh: round0(vPanelCount * PANEL_KW * ANNUAL_YIELD_KWH_PER_KWP),
+      annualYieldKwh: round0(vPanelCount * PANEL_KW * specificYield),
     };
     const recommendation = recommendBom(vResult, intake, variant.strategy);
     const annualSavingsEur = variant.monthlySavingsEur * 12;

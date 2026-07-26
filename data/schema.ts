@@ -113,6 +113,13 @@ export const SizingResultSchema = z.object({
     modulesPerString: z.number().optional(),
     stringCount: z.number().optional(),
   }).optional(),
+  climate: z.object({
+    country: z.string(),
+    grossKwhPerKwp: z.number(),
+    soilingLossPct: z.number(),
+    temperatureLossPct: z.number(),
+    netSpecificYieldKwhPerKwp: z.number(),
+  }).optional(),
   variants: z.tuple([VariantSchema, VariantSchema, VariantSchema]),
 });
 

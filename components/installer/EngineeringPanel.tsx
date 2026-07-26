@@ -23,6 +23,9 @@ interface Props {
   azimuthLabel?: string;
   /** Median roof pitch shown as array tilt when the sizer omitted tiltDegrees. */
   tiltFallbackDegrees?: number;
+  /** Country/climate yield model — gross irradiance and the soiling +
+   *  temperature losses down to the net specific yield used for sizing. */
+  climate?: NonNullable<SizingResult["climate"]>;
 }
 
 interface Tile {
@@ -39,6 +42,7 @@ export function EngineeringPanel({
   engineering,
   azimuthLabel,
   tiltFallbackDegrees,
+  climate,
 }: Props) {
   const tiles: Tile[] = [];
   const eng = engineering ?? {};
@@ -104,7 +108,7 @@ export function EngineeringPanel({
     tiles.push({ label: "String count", value: String(eng.stringCount) });
   }
 
-  if (tiles.length === 0) return null;
+  if (tiles.length === 0 && !climate) return null;
 
   return (
     <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
@@ -116,28 +120,65 @@ export function EngineeringPanel({
           Deterministic
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {tiles.map((tile) => (
-          <div
-            key={tile.label}
-            className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2.5 py-2"
-          >
-            <div className="text-[9px] uppercase tracking-wider text-[#5B6470]">
-              {tile.label}
+      {tiles.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {tiles.map((tile) => (
+            <div
+              key={tile.label}
+              className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2.5 py-2"
+            >
+              <div className="text-[9px] uppercase tracking-wider text-[#5B6470]">
+                {tile.label}
+              </div>
+              <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#F7F8FA]">
+                {tile.value}
+              </div>
+              {tile.hint ? (
+                <div className="mt-0.5 text-[9px] text-[#5B6470]">{tile.hint}</div>
+              ) : null}
             </div>
-            <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#F7F8FA]">
-              {tile.value}
-            </div>
-            {tile.hint ? (
-              <div className="mt-0.5 text-[9px] text-[#5B6470]">{tile.hint}</div>
-            ) : null}
+          ))}
+        </div>
+      )}
+
+      {/* Climate yield model — gross irradiance minus the dust/soiling and
+          high-temperature losses that matter enormously in Gulf markets. */}
+      {climate && (
+        <div className="mt-3 rounded-md border border-[#2A3038] bg-[#0A0E1A] p-3">
+          <div className="mb-2 text-[9px] uppercase tracking-wider text-[#5B6470]">
+            Yield &amp; climate losses · {climate.country}
           </div>
-        ))}
-      </div>
-      <p className="mt-3 text-[11px] leading-snug text-[#5B6470]">
-        AI-computed array geometry for this roof — orientation and tilt, plus (where
-        the sizer emits them) spacing and string layout a certified installer can build to.
-      </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums">
+            <span className="text-[#9BA3AF]">
+              Gross{" "}
+              <span className="font-semibold text-[#F7F8FA]">
+                {Math.round(climate.grossKwhPerKwp).toLocaleString()}
+              </span>{" "}
+              kWh/kWp
+            </span>
+            <span className="text-[#F2B84B]">
+              − soiling {Math.round(climate.soilingLossPct * 100)}%
+            </span>
+            <span className="text-[#F2B84B]">
+              − temperature {Math.round(climate.temperatureLossPct * 100)}%
+            </span>
+            <span className="text-[#62E6A7]">
+              = net{" "}
+              <span className="font-semibold">
+                {Math.round(climate.netSpecificYieldKwhPerKwp).toLocaleString()}
+              </span>{" "}
+              kWh/kWp
+            </span>
+          </div>
+        </div>
+      )}
+
+      {tiles.length > 0 && (
+        <p className="mt-3 text-[11px] leading-snug text-[#5B6470]">
+          AI-computed array geometry for this roof — orientation and tilt, plus (where
+          the sizer emits them) spacing and string layout a certified installer can build to.
+        </p>
+      )}
     </section>
   );
 }
