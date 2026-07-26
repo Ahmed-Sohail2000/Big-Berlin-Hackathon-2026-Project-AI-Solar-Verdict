@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { BuildingType, GridType, Preference, RoofType } from "@/lib/contracts";
+import { currencyForCountry, CURRENCIES } from "@/lib/currency";
 import { tryParseCoords } from "@/lib/parse-coords";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { VoiceMemoRecorder, type VoiceMemo } from "./VoiceMemoRecorder";
@@ -192,6 +193,9 @@ export function IntakePanel({ onLocate }: Props = {}) {
   const kwhNum = Number(annualKwh);
   const peakNum = Number(peakDemandKw);
   const priceNum = Number(priceEurKwh);
+  // The bill + price are entered in the country's currency; convert to the EUR
+  // base the sizing math uses. Symbol also labels the inputs.
+  const cur = CURRENCIES[currencyForCountry(country)];
   const isCommercial = buildingType !== "residential";
   const canSubmit = address.trim().length > 0 && (billNum > 0 || kwhNum > 0);
 
@@ -209,9 +213,12 @@ export function IntakePanel({ onLocate }: Props = {}) {
           ? Math.round(billNum / 12)
           : Math.round(billNum)
         : Math.round((kwhNum * 0.32) / 12);
+    // Convert the entered bill from the country's currency to the EUR base the
+    // sizing math uses (e.g. AED 350 → ~€88), so demand + savings are realistic.
+    const billEur = Math.round((derivedMonthlyBill || 120) / cur.perEur) || 120;
     const params = new URLSearchParams({
       address,
-      bill: String(derivedMonthlyBill || 120),
+      bill: String(billEur),
       ev: String(evPref === "yes"),
       heating: "gas",
       goal: "lower_bill",
@@ -233,7 +240,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
       params.set("peakDemandKw", String(peakNum));
     }
     if (priceNum > 0) {
-      params.set("price", String(priceNum));
+      params.set("price", String(priceNum / cur.perEur));
     }
     // Voice memo (when present) is too big for URL params; stash it in
     // sessionStorage so the /quote page's SendToInstaller picks it up
@@ -390,7 +397,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
 
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5B6470]">
-            €
+            {cur.symbol}
           </span>
           <input
             id="bill"
@@ -457,7 +464,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
             className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
-            &euro; / kWh
+            {cur.symbol} / kWh
           </span>
         </div>
         <p className="text-[11px] text-[#5B6470]">
