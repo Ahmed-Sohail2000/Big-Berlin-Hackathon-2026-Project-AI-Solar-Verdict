@@ -1360,12 +1360,8 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           {/* Tavily / market-catalog attribution badge */}
           {liveSizing?.catalogScrapedAt ? (
             <div className="rounded-md border border-[#2A3038] bg-[#12161C] px-3 py-2 text-[11px] text-[#9BA3AF]">
-              Live German solar market — scraped{" "}
-              <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>{" "}
-              via Tavily
-              {liveSizing.catalogSource ? (
-                <span className="text-[#5B6470]"> ({liveSizing.catalogSource})</span>
-              ) : null}
+              Live market — scraped{" "}
+              <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>
             </div>
           ) : null}
 

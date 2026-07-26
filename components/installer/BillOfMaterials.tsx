@@ -229,7 +229,7 @@ export function BillOfMaterials({
         <div>
           <h2 className="text-sm font-semibold text-[#F7F8FA]">Bill of materials</h2>
           <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[#5B6470]">
-            AI-recommended BoM · priced from the scraped German market catalog
+            AI-recommended BoM · live market pricing
           </p>
         </div>
         <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
@@ -397,7 +397,7 @@ export function BillOfMaterials({
       <p className="mt-2 text-[11px] leading-snug text-[#5B6470]">
         {bos && bos.length > 0
           ? "Line prices are catalog-derived (ex VAT); balance-of-system covers mounting, DC/AC wiring, grid connection and labour."
-          : "Line prices are hardware list prices (ex VAT) from the market catalog; the balance-of-system line carries everything else so the lines always sum to the total."}
+          : "Hardware list prices (ex VAT); the balance-of-system line covers the rest."}
       </p>
     </section>
   );
