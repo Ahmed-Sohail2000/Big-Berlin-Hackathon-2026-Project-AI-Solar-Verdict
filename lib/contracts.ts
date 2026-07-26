@@ -87,6 +87,10 @@ export interface Variant {
   citedProjectIds: string[];
   /** "Risk: ..." sentence from rationale generation. */
   objection: string;
+  /** % of annual consumption the system's generation covers (additive). */
+  consumptionOffsetPct?: number;
+  /** % of generation used on-site rather than exported to grid (additive). */
+  selfConsumptionPct?: number;
 }
 
 export interface RoofSegment {

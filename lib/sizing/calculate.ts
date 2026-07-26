@@ -649,6 +649,14 @@ function buildVariant(input: BuildVariantInput): Variant {
   const paybackYears =
     annualSavingsEur > 0 ? round1(bom.totalEur / annualSavingsEur) : 0;
 
+  // Engineer-facing performance metrics (PVsyst/Helioscope style):
+  //  - consumptionOffsetPct: how much of the annual load the system generates.
+  //  - selfConsumptionPct: how much generation is used on-site vs exported.
+  const consumptionOffsetPct =
+    annualKwh > 0 ? Math.round((annualYieldKwh / annualKwh) * 100) : 0;
+  const selfConsumptionPct =
+    annualYieldKwh > 0 ? Math.round((selfConsumedKwh / annualYieldKwh) * 100) : 0;
+
   return {
     id: `V-${cfg.strategy}`,
     label: cfg.label,
@@ -661,6 +669,8 @@ function buildVariant(input: BuildVariantInput): Variant {
     confidence: cfg.confidence,
     citedProjectIds: ["P-001", "P-002", "P-003"],
     objection: cfg.objection,
+    consumptionOffsetPct,
+    selfConsumptionPct,
   };
 }
 

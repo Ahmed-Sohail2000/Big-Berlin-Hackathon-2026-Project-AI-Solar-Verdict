@@ -77,6 +77,8 @@ export const VariantSchema = z.object({
   confidence: z.number().min(0).max(1),
   citedProjectIds: z.array(z.string()).length(3),
   objection: z.string(),
+  consumptionOffsetPct: z.number().optional(),
+  selfConsumptionPct: z.number().optional(),
 });
 
 export const RoofSegmentSchema = z.object({
