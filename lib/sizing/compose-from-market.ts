@@ -724,11 +724,17 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
       const mountLine = Math.min(round0(mountingEur), balanceEur);
       const residual = Math.max(0, balanceEur - mountLine);
       const dc = round0(residual * BOS_SPLIT.dcStringCabling);
-      const ac = round0(residual * BOS_SPLIT.acCombinerProtection);
+      const acFull = round0(residual * BOS_SPLIT.acCombinerProtection);
       const grid = round0(residual * BOS_SPLIT.gridConnection);
       // Labour absorbs the rounding remainder so the lines sum EXACTLY to balance.
-      const labour = balanceEur - mountLine - dc - ac - grid;
+      const labour = balanceEur - mountLine - dc - acFull - grid;
       const approxStrings = Math.max(1, Math.ceil(panelCount / 19));
+      // UAE / DEWA Shams Dubai mandates a compliant DC isolator per array
+      // (IEC 60947-3, DC-PV2, IP66, 50°C+). Carve its cost out of the generic
+      // AC/DC protection line so the BoS still sums exactly to the balance.
+      const isAE = (intake.country ?? "").toUpperCase() === "AE";
+      const dcIsolatorEur = isAE ? Math.min(round0(120 + approxStrings * 45), acFull) : 0;
+      const ac = acFull - dcIsolatorEur;
       bom.balanceOfSystem = [
         {
           item: "Flat-roof mounting system",
@@ -747,9 +753,18 @@ export function composeFromMarket(args: ComposeFromMarketArgs): SizingResultWith
           detail: "string combiner, DC/AC OCPD, surge protection",
           eur: ac,
         },
+        ...(isAE
+          ? [
+              {
+                item: "DC isolator (DEWA-compliant)",
+                detail: "IEC 60947-3 · DC-PV2 · IP66 · 50°C+ rated",
+                eur: dcIsolatorEur,
+              },
+            ]
+          : []),
         {
           item: "Grid connection",
-          detail: "metering + utility interconnection",
+          detail: isAE ? "DEWA bidirectional meter + interconnection" : "metering + utility interconnection",
           eur: grid,
         },
         {

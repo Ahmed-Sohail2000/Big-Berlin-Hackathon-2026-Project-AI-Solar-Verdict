@@ -46,9 +46,9 @@ export function PanelLayoutPreview({ segments, panelCount }: Props) {
     <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
-          AI starting layout
+          AI panel layout
         </h3>
-        <span className="text-[11px] text-[#5B6470]">drag-to-edit coming soon</span>
+        <span className="text-[11px] text-[#5B6470]">per-segment schematic · edit in 3D</span>
       </div>
       <svg viewBox="0 0 420 180" className="h-44 w-full" role="img" aria-label="Panel layout preview">
         {distribution.map((segment, segmentIndex) => {
