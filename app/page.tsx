@@ -47,6 +47,88 @@ const TRUST_ITEMS = [
   "Adapts to the market and tariff of the country you enter — while keeping the numbers honest",
 ];
 
+const CAPABILITIES = [
+  {
+    tag: "01",
+    title: "AI roof modeling",
+    blurb:
+      "Type an address and the AI reads the real roof from satellite and Solar data, then auto-places the panel array in seconds — no manual CAD.",
+    points: [
+      "Pulls real roof geometry — segments, pitch, azimuth, usable area — from Google Solar / satellite data.",
+      "Auto-places the array on the highest-yield faces, weak north faces skipped rather than padded.",
+      "Per-panel yield sampled from the irradiance layer, so the layout is grounded in real sun, not a flat assumption.",
+    ],
+  },
+  {
+    tag: "02",
+    title: "Design tools",
+    blurb:
+      "AI auto-sizing with the engineer's manual override. Approve the AI's design or reshape it — every edit flows through to the price and bill of materials.",
+    points: [
+      "Edit, approve or remove individual panels on the 3D roof; toggle whole roof faces on or off.",
+      "Add batteries, heat pumps, inverters and balance-of-system wiring to the bill of materials.",
+      "Three strategies — Best Margin, Best Close Rate, Best LTV — that change size, price and BoM together.",
+    ],
+  },
+  {
+    tag: "03",
+    title: "3D visualization",
+    blurb:
+      "See the recommended system on a photoreal model of the real building — live with keys, or a fully offline simulation when there are none. Client-ready either way.",
+    points: [
+      "Photoreal 3D tiles of the actual building when Google keys are live.",
+      "A fully offline synthetic 3D simulation when they're not — the demo never goes blank.",
+      "The recommended array rendered on the roof, ready to show a customer.",
+    ],
+  },
+];
+
+const TEAM_VALUE = [
+  {
+    title: "White-label & license it",
+    body: "License Verdict into your own sales pipeline under your brand — your logo on the proposal, your installers reviewing and sending the offer.",
+  },
+  {
+    title: "Country & DEWA-aware",
+    body: "Climate-aware yield and market pricing adapt to the country you enter. UAE proposals include the DEWA DC isolator and Gulf soiling / temperature losses.",
+  },
+  {
+    title: "Deterministic engineering",
+    body: "The AI writes rationale, never geometry. Panel counts, kWp and string layouts come from pure, repeatable sizing math a certified installer can build to.",
+  },
+  {
+    title: "Transparent bill of materials",
+    body: "Every line — panels, inverter, storage, wiring — is costed from a real catalog. Nothing is invented, so your team can quote with confidence.",
+  },
+];
+
+const FAQS = [
+  {
+    q: "How accurate is the design?",
+    a: "It reads real roof geometry — pitch, azimuth, usable area — from Google Solar data and sizes the system with deterministic engineering math, not guesswork. It's a fast, credible starting design: the on-roof layout is fully editable and a certified installer reviews and adjusts it before anything is quoted.",
+  },
+  {
+    q: "Do I need Google API keys or billing?",
+    a: "Not to try it. Verdict ships with a mock mode that runs the entire flow on cached fixture data — no keys, no billing. Add your own Google Maps / Solar keys to switch on live geocoding, live roof analysis and photoreal 3D.",
+  },
+  {
+    q: "Does it work for the UAE / DEWA?",
+    a: "Yes. The yield model is climate-aware — Gulf irradiance with soiling and high-temperature losses — and the bill of materials includes the DEWA-required DC isolator. Pricing follows the market of the country you enter.",
+  },
+  {
+    q: "Can I white-label it?",
+    a: "Yes. Verdict is built to be licensed into a solar company's own pipeline: your branding on the customer proposal and email, your installers reviewing and sending the final offer.",
+  },
+  {
+    q: "Residential or commercial?",
+    a: "Both. Choose a building type from residential up to warehouse or industrial; sizing defaults, roof assumptions and engineering — flat-roof tilt, row spacing, string layout — adjust accordingly.",
+  },
+  {
+    q: "What does the customer get?",
+    a: "A branded, itemized proposal: system size, the panel layout on their own roof, the full bill of materials, and estimated yield and payback — reviewed by a certified installer and delivered by email.",
+  },
+];
+
 export default function Home() {
   return (
     <div className="bg-[#0A0E1A] text-[#F7F8FA]">
@@ -57,14 +139,17 @@ export default function Home() {
             Verdict
           </a>
           <div className="hidden items-center gap-7 md:flex">
+            <a href="#capabilities" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
+              Capabilities
+            </a>
             <a href="#how-it-works" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
               How it works
             </a>
-            <a href="#benefits" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
-              Benefits
+            <a href="#for-teams" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
+              For solar teams
             </a>
-            <a href="#why-verdict" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
-              Why Verdict
+            <a href="#faq" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
+              FAQ
             </a>
           </div>
           <div className="flex items-center gap-4">
@@ -176,6 +261,48 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Capabilities — three feature sections in SurgePV's format */}
+        <section id="capabilities" className="scroll-mt-16 border-t border-[#1A1F2A]">
+          <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 sm:py-20">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#3DAEFF]">
+                Capabilities
+              </span>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Everything from the roof to the quote
+              </h2>
+              <p className="max-w-2xl text-sm text-[#9BA3AF]">
+                One pipeline: read the roof, design the system, price it, and show it in 3D —
+                with a certified installer in the loop before anything ships.
+              </p>
+            </div>
+            <div className="flex flex-col gap-4">
+              {CAPABILITIES.map((cap) => (
+                <div
+                  key={cap.title}
+                  className="grid gap-6 rounded-lg border border-[#2A3038] bg-[#12161C] p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:p-8"
+                >
+                  <div className="flex flex-col gap-3">
+                    <span className="text-sm font-semibold tabular-nums text-[#3DAEFF]">
+                      {cap.tag}
+                    </span>
+                    <h3 className="text-lg font-semibold tracking-tight sm:text-xl">{cap.title}</h3>
+                    <p className="text-sm leading-relaxed text-[#9BA3AF]">{cap.blurb}</p>
+                  </div>
+                  <ul className="flex flex-col justify-center gap-3">
+                    {cap.points.map((point) => (
+                      <li key={point} className="flex items-start gap-3 text-sm text-[#F7F8FA]">
+                        <span aria-hidden className="mt-0.5 text-[#62E6A7]">&#10003;</span>
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* How it works */}
         <section id="how-it-works" className="scroll-mt-16 border-t border-[#1A1F2A]">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
@@ -224,18 +351,84 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Built for solar teams — honest value props, no fabricated proof */}
+        <section id="for-teams" className="scroll-mt-16 border-t border-[#1A1F2A]">
+          <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#3DAEFF]">
+                Built for solar teams
+              </span>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Made to sit inside your business
+              </h2>
+              <p className="max-w-2xl text-sm text-[#9BA3AF]">
+                No borrowed logos, no invented numbers — just what a solar company actually
+                needs from a design tool it puts its name on.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {TEAM_VALUE.map((item) => (
+                <div key={item.title} className="rounded-lg border border-[#2A3038] bg-[#12161C] p-6">
+                  <h3 className="text-base font-semibold">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[#9BA3AF]">{item.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ — honest answers about how Verdict actually works */}
+        <section id="faq" className="scroll-mt-16 border-t border-[#1A1F2A]">
+          <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-16 sm:py-20">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Frequently asked questions
+            </h2>
+            <div className="flex flex-col gap-3">
+              {FAQS.map((faq) => (
+                <details
+                  key={faq.q}
+                  className="group rounded-lg border border-[#2A3038] bg-[#12161C] px-5 py-4"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[#F7F8FA] [&::-webkit-details-marker]:hidden">
+                    {faq.q}
+                    <span
+                      aria-hidden
+                      className="text-lg leading-none text-[#3DAEFF] transition-transform group-open:rotate-45"
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-3 text-sm leading-relaxed text-[#9BA3AF]">{faq.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Final CTA band */}
         <section className="border-t border-[#1A1F2A]">
-          <div className="mx-auto flex max-w-4xl flex-col items-center gap-5 px-6 py-16 text-center sm:py-20">
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Ready to design your building&rsquo;s solar system?
+          <div className="mx-auto flex max-w-4xl flex-col items-center gap-5 px-6 py-16 text-center sm:py-24">
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
+              Design it. Price it. <span className="text-[#3DAEFF]">Sell it.</span>
             </h2>
-            <a
-              href="#app"
-              className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
-            >
-              Design a system
-            </a>
+            <p className="max-w-xl text-sm leading-relaxed text-[#9BA3AF] sm:text-base">
+              Turn an address into a roof-measured, engineered, priced proposal your team can
+              put its name on — in about a minute.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="#app"
+                className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
+              >
+                Design a system
+              </a>
+              <a
+                href="/installer"
+                className="rounded-lg border border-[#2A3038] px-6 py-3 text-base font-semibold text-[#F7F8FA] transition-colors hover:border-[#3DAEFF]/50"
+              >
+                Installer dashboard
+              </a>
+            </div>
           </div>
         </section>
       </main>

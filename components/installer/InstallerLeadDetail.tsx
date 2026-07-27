@@ -49,6 +49,7 @@ import {
 import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
+import { SingleLineDiagram } from "@/components/installer/SingleLineDiagram";
 import {
   PanelOverlayCesium,
   panelKey,
@@ -1432,6 +1433,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
             climate={liveSizing?.climate ?? lead.publicPreview.sizing.climate}
           />
+
+          {/* Permit-ready single-line diagram — deterministic electrical
+              schematic built from the selected variant's BoM + the sizer's
+              engineering block (string layout, inverter rating, storage). */}
+          <SingleLineDiagram bom={selectedVariant.bom} engineering={engineering} />
 
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
