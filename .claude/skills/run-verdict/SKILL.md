@@ -14,7 +14,7 @@ pnpm install
 npx playwright install chromium
 ```
 
-The smoke test script (`scripts/smoke-test.mjs`) imports the bare `playwright` package directly, which is separate from the `@playwright/test` devDependency — check `node_modules/playwright` exists before running it, and if not, `pnpm add -D playwright` then `npx playwright install chromium` again (a fresh `playwright` package version pulls its own matching browser build, distinct from whatever `@playwright/test` already cached).
+The smoke test script (`scripts/smoke-test.mjs`) imports `chromium` from the `@playwright/test` devDependency — no separate bare `playwright` package is needed. Just make sure the Chromium browser build is installed (`npx playwright install chromium`); if it's missing you'll get `browserType.launch: Executable doesn't exist`.
 
 ## Build
 
@@ -60,6 +60,6 @@ Then open `http://localhost:3000` in your browser.
 
 ## Troubleshooting
 
-- **`browserType.launch: Executable doesn't exist`**: Run `npx playwright install chromium` — if you just added the bare `playwright` package, it needs its own browser download even if `@playwright/test` already has one cached.
+- **`browserType.launch: Executable doesn't exist`**: Run `npx playwright install chromium` — the `@playwright/test` package needs its Chromium browser build downloaded on a fresh clone.
 - **`Cannot read properties of null (reading 'matches')` from `npm install`**: this is npm's arborist choking on the pnpm-linked `node_modules` tree — use `pnpm install` / `pnpm add` instead, never `npm install`.
 - **Next.js Workspace Warning**: You may see a warning about multiple lockfiles; this typically does not affect functionality.
