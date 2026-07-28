@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm build",
+  "build": {
+    "env": {
+      "MOCK_MODE": "true",
+      "NEXT_PUBLIC_MOCK_MODE": "true"
+    }
+  },
+  "env": {
+    "MOCK_MODE": "true",
+    "NEXT_PUBLIC_MOCK_MODE": "true"
+  }
+}
