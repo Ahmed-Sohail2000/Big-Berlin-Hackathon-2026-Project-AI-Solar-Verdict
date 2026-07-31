@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. **Read `AGENTS.md` first** — it's the canonical repo map, per-AI ownership table, and hard rules (frozen contracts, locked color tokens, package manager). This file adds the Claude-Code-specific tooling (sub-agents, hooks, skills) and the product/architecture context that lives on top of it.
 
-## What Verdict is
+## What HelioSense AI is
 
-Verdict is an **AI-assisted solar system design tool**, packaged as a white-label SaaS a solar company can license. From a single address it produces an engineered proposal — roof analysis, panel layout, bill of materials, and financials — in seconds. It serves two personas from one codebase:
+HelioSense AI is an **AI-assisted solar system design tool**, packaged as a white-label SaaS a solar company can license. From a single address it produces an engineered proposal — roof analysis, panel layout, bill of materials, and financials — in seconds. It serves two personas from one codebase:
 
 - **Homeowner / building owner** (`components/homeowner/`, `app/quote/`): guided intake → 3 quote variants → send to installer.
 - **Installer / solar engineer** (`components/installer/`, `app/installer/`): a sell-ready proposal workspace — numbered stepper (Design & tools → Review → Financial proposal), editable BoM, engineering parameters (tilt/GCR/DC-AC ratio/string sizing), single-line diagram, and email-to-customer.

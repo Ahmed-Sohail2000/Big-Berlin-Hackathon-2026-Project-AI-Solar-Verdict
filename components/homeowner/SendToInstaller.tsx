@@ -117,7 +117,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
           <Check size={28} className="text-[#62E6A7]" strokeWidth={3} />
         </div>
         <div>
-          <h3 className="text-lg font-semibold">Verdict sent</h3>
+          <h3 className="text-lg font-semibold">HelioSense AI sent</h3>
           <p className="text-sm text-[#9BA3AF] mt-1">
             Berlin Solar Pro will review your proposal. We&rsquo;ll notify you within 24 hours.
           </p>
@@ -138,7 +138,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
         {state === "sending" ? (
           <>
             <span className="inline-block h-4 w-4 rounded-md border-2 border-[#0A0E1A]/30 border-t-[#0A0E1A] animate-spin" />
-            Sending Verdict packet...
+            Sending HelioSense AI packet...
           </>
         ) : (
           <>

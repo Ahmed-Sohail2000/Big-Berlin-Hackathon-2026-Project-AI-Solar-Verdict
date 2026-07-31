@@ -234,7 +234,7 @@ export default async function QuotePage({
   return (
     <main className="relative min-h-dvh bg-[#0A0E1A] text-[#F7F8FA] flex flex-col">
       <nav className="flex items-center justify-between px-6 py-5 sm:px-10 z-30">
-        <Link href="/" className="text-base font-semibold tracking-tight">Verdict</Link>
+        <Link href="/" className="text-base font-semibold tracking-tight">HelioSense AI</Link>
         <Link href="/" className="text-sm text-[#9BA3AF] hover:text-[#F7F8FA]">← New quote</Link>
       </nav>
 

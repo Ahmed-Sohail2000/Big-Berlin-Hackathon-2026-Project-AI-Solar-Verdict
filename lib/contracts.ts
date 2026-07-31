@@ -128,6 +128,20 @@ export interface SizingResult {
     performanceRatio?: number;
     modulesPerString?: number;
     stringCount?: number;
+    /**
+     * Residential single-phase string-inverter sizing (lib/sizing/electrical.ts
+     * computeResidentialStringSizing) and DC cable voltage-drop / wire-gauge
+     * results (computeVoltageDrop / recommendWireGaugeMm2). Optional +
+     * additive; nothing in sizeQuote()'s default pipeline populates these —
+     * they exist for callers (e.g. a future UI layer) that invoke the
+     * electrical.ts calculators directly and choose to surface the results.
+     */
+    residentialStringVocCold?: number;
+    residentialModulesPerString?: number;
+    residentialStringCount?: number;
+    residentialWithinMpptWindow?: boolean;
+    voltageDropPercent?: number;
+    wireGaugeMm2?: number;
   };
   /**
    * Country/climate context for the yield model — gross irradiance and the

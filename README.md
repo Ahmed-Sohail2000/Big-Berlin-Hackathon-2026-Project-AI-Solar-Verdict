@@ -1,57 +1,61 @@
-# Verdict — Solar Lead Marketplace
-_Big Berlin Hack 2026 · Reonic track_
+# HelioSense AI
+
+_AI-assisted solar system design, from address to engineered proposal in seconds._
 
 ## What it is
 
-Verdict is a dual-sided platform connecting Berlin homeowners to verified solar installers. A homeowner enters an address and a few demand preferences, then gets an instant AI-generated technical brief from their real roof. The installer receives a qualified, gated lead with roof intelligence, sun yield, panel placement, and an editable BoM instead of a generic contact form.
+HelioSense AI (formerly Verdict) is a white-label solar proposal tool a solar company can license. From a single address it produces an engineered proposal — roof analysis, panel layout, bill of materials, and financials — for two personas from one codebase:
 
-## Demo
+- **Homeowner / building owner** (`/`, `/quote`) — guided intake → 3 quote variants → send to installer.
+- **Installer / solar engineer** (`/installer`) — a sell-ready proposal workspace: editable BoM, engineering parameters (tilt, GCR, DC/AC ratio, string sizing), a permit-ready single-line diagram, and email-to-customer.
 
-- Homeowner side: `/` — quote intake, address autocomplete, roof preview, lead submission
-- Installer side: `/installer` — lead marketplace, roof intelligence, Cesium panel editing, offer send-back
+It covers both **residential and commercial** buildings (auto-detected from the address, with manual override) across multiple countries, with UAE/DEWA-aware positioning (climate-corrected yield, DEWA equipment catalog).
 
-## Tech stack
+## Calculators
 
-- **Next.js 15.5.15 App Router** — React 19 app routes, server components, and API routes.
-- **TypeScript strict** — shared quote, BoM, sizing, and lead contracts.
-- **Tailwind CSS 4** — app styling through CSS tokens and utility classes.
-- **Google Maps JavaScript API** via `@googlemaps/js-api-loader` — Places autocomplete and homeowner roof map fallback.
-- **Google Geocoding API** — `/api/forward-geocode` and `/api/reverse-geocode` resolve typed addresses and browser coordinates.
-- **Google Solar API `buildingInsights:findClosest`** — roof segments, pitch, azimuth, area, sunshine hours, bounding boxes, and Google-proposed `solarPanels[]`.
-- **Google Solar API `dataLayers:get`** — annual flux GeoTIFF source for the sun heatmap raster overlay.
-- **CesiumJS 1.140.0** — installer-side photoreal 3D roof view using Google Photorealistic 3D Tiles and custom panel/heatmap entities.
-- **GeoTIFF + Sharp** — converts Solar API annual flux rasters into PNG heatmaps for Cesium.
-- **Gemini 2.5 Flash through Google Generative Language REST** — JSON-only quote rationale generation and one-off market catalog extraction in `scripts/scrape-catalog.ts`.
-- **Tavily** — market research input for the cached German solar equipment catalog and runtime tariff lookup fallback.
-- **Gradium ASR WebSocket** — optional homeowner voice memo transcription through `/api/voice-transcribe`.
-- **Zod** — schema validation for Gemini outputs and data contracts.
-- **coordinate-parser** — accepts decimal and DMS coordinate input.
-- **lucide-react** — UI icons.
-- **react-three-fiber / drei / three** — Ruhr cinematic GLB scene on the homeowner side.
-- **Next.js API routes + process-local Map** — demo backend for quote, roof facts, heatmaps, voice transcription, and in-memory leads.
+The sizing engine (`lib/sizing/`) is deterministic — no LLM in the numeric path. It includes SurgePV-style engineering calculators: temperature-corrected Voc/Vmp string sizing with MPPT-window checks (commercial + residential), DC voltage-drop / wire-gauge sizing, 25-year NPV payback optimization, and per-country climate-adjusted specific yield. Rationale text (the "why" behind a variant) is the only LLM-generated part.
 
-## How the AI brief is built
+## Run locally (MOCK_MODE — no API keys needed)
 
-- Address or coordinates are resolved to `lat/lng` through Google Places or Geocoding.
-- The server calls Google Solar `buildingInsights:findClosest` for measured roof segments, sun hours, pitch, azimuth, and candidate panel positions.
-- Deterministic sizing converts roof facts plus homeowner demand into panel count, kWp, battery/EV/heat-pump assumptions, savings, payback, and three BoM strategies.
-- Solar `dataLayers:get` provides the annual flux GeoTIFF; Verdict colorizes it into a PNG and overlays it in Cesium as a sun heatmap.
-- The installer view combines segment-first AI panel layout, editable panel toggles/additions, yield-weighted recompute, Gemini rationale, and a technical brief for approving the lead.
-
-## Run locally
+This app ships with a global mock mode that serves cached fixtures instead of calling Google Maps/Solar/Gemini/Tavily, so it runs fully offline:
 
 ```bash
 pnpm install
-pnpm dev
+MOCK_MODE=true pnpm dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. The mock fixtures cover a curated set of demo locations (Berlin residential/commercial, Dubai residential/commercial) — see `data/fixtures/demo-locations.ts`.
 
-Required environment variables are listed in `.env.example`.
+To run against live Google/Gemini/Tavily APIs instead, copy `.env.example` to `.env.local`, fill in real keys, and omit `MOCK_MODE`.
 
-## Technical documentation
+## Commands
 
-For jury deep-dive, see [`AUDIT_REPORT.md`](./AUDIT_REPORT.md) — bug analysis with `file:line` references, root causes, minimal fixes, risk levels, fix status, and verification (tsc, unit tests).
+```bash
+pnpm dev              # dev server (MOCK_MODE=true pnpm dev for offline)
+pnpm build            # production build
+pnpm lint             # eslint
+pnpm test             # vitest unit tests
+pnpm test:e2e         # Playwright e2e (point BASE_URL at a local MOCK_MODE server)
+pnpm prebake          # CSV -> JSON data cache (run before prebake:heatmaps)
+pnpm prebake:heatmaps # JSON -> PNG solar heatmaps
+```
+
+## Tech stack
+
+- **Next.js 15 App Router**, React 19, TypeScript strict — shared quote/BoM/sizing/lead contracts (`lib/contracts.ts`).
+- **Tailwind CSS 4** with locked CSS-token color system (`AGENTS.md`).
+- **Google Maps / Places / Solar API** for geocoding, roof segments, and annual flux heatmaps (mocked by default; see above).
+- **CesiumJS** for installer-side photoreal 3D roof view (offline: a procedural synthetic 3D fallback).
+- **Gemini** for quote rationale text generation only — never the numeric sizing path.
+- **Tavily** for cached market/tariff research input.
+- **Zod** — schema validation mirroring the frozen `lib/contracts.ts` types.
+- **Zustand + TanStack Query** — client state and data fetching.
+
+## Documentation
+
+- `AGENTS.md` — canonical repo map, ownership table, and hard rules (frozen contracts, locked color tokens).
+- `CLAUDE.md` — Claude Code tooling (sub-agents, hooks, skills) and product/architecture context.
+- `AUDIT_REPORT.md` — bug analysis with file:line references, root causes, and fix status.
 
 ## Authors
 

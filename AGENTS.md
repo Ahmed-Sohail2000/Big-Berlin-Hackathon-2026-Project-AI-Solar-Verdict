@@ -6,7 +6,7 @@
 
 ## What this repo is
 
-**Verdict** — an AI solar-quote tool for German homeowners. Built for Big Berlin Hack 2026 (Reonic track) in 24 hours.
+**HelioSense AI** (formerly Verdict) — an AI solar-quote tool for German homeowners. Built for Big Berlin Hack 2026 (Reonic track) in 24 hours.
 
 Type your address → see a satellite of your roof → answer 4 questions → get 3 BoM variants grounded in 1,277 real Reonic projects → send to a certified installer → installer reviews/edits/approves → final BoM lands back on your phone.
 

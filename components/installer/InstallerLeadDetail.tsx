@@ -47,6 +47,7 @@ import {
   type CustomLineItem,
 } from "@/components/installer/BillOfMaterials";
 import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
+import { ElectricalDesignPanel } from "@/components/installer/ElectricalDesignPanel";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
 import { SingleLineDiagram } from "@/components/installer/SingleLineDiagram";
@@ -844,7 +845,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         body: JSON.stringify({
           bom: selectedVariant.bom,
           totalEur: selectedVariant.bom.totalEur,
-          installerNotes: "Installer-verified BoM based on Verdict roof sizing.",
+          installerNotes: "Installer-verified BoM based on HelioSense AI roof sizing.",
         }),
       });
       const data = await res.json();
@@ -1227,7 +1228,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                       `• Monthly savings: €${selectedVariant.monthlySavingsEur.toLocaleString()}\n` +
                       `• Payback: ${selectedVariant.paybackYears} years\n` +
                       `• 25-year ROI: ${roiPct >= 0 ? "+" : ""}${roiPct}%\n\n` +
-                      `Prepared with Verdict.`,
+                      `Prepared with HelioSense AI.`,
                   )}`}
                   className="rounded-md border border-[#2A3038] px-2.5 py-1 text-[11px] font-medium text-[#9BA3AF] transition-colors hover:border-[#3DAEFF]/50 hover:text-[#F7F8FA]"
                 >
@@ -1432,6 +1433,15 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             azimuthLabel={arrayAzimuthLabel}
             tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
             climate={liveSizing?.climate ?? lead.publicPreview.sizing.climate}
+          />
+
+          {/* Electrical design — residential string sizing (computed
+              client-side when the sizer's commercial engineering block is
+              absent) plus a wire-gauge / voltage-drop estimate for either
+              case. Display only; never feeds sizeQuote()'s output. */}
+          <ElectricalDesignPanel
+            sizing={liveSizing ?? lead.publicPreview.sizing}
+            intake={intakeFromLead(lead)}
           />
 
           {/* Permit-ready single-line diagram — deterministic electrical

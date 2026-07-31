@@ -112,6 +112,12 @@ export const SizingResultSchema = z.object({
     performanceRatio: z.number().optional(),
     modulesPerString: z.number().optional(),
     stringCount: z.number().optional(),
+    residentialStringVocCold: z.number().optional(),
+    residentialModulesPerString: z.number().optional(),
+    residentialStringCount: z.number().optional(),
+    residentialWithinMpptWindow: z.boolean().optional(),
+    voltageDropPercent: z.number().optional(),
+    wireGaugeMm2: z.number().optional(),
   }).optional(),
   climate: z.object({
     country: z.string(),

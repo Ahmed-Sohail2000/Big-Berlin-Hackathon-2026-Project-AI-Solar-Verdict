@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Verdict — installer-DNA solar quote intelligence",
+  title: "HelioSense AI — installer-DNA solar quote intelligence",
   description: "Enter an address and get an AI-engineered solar proposal in seconds.",
 };
 

@@ -55,11 +55,13 @@ test.describe("MOCK_MODE homeowner → installer flow", () => {
     const sendButton = page.getByRole("button", { name: /send to a certified solar installer/i });
     await expect(async () => {
       await sendButton.click();
-      await expect(page.getByText(/Verdict sent|Sending Verdict packet/)).toBeVisible({
+      await expect(
+        page.getByText(/HelioSense AI sent|Sending HelioSense AI packet/),
+      ).toBeVisible({
         timeout: 2_000,
       });
     }).toPass({ timeout: 20_000 });
-    await expect(page.getByText("Verdict sent")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("HelioSense AI sent")).toBeVisible({ timeout: 10_000 });
 
     // --- Installer marketplace + detail ---
     await page.goto("/installer");

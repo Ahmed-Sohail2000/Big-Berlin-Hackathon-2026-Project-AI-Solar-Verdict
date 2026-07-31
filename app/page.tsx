@@ -86,7 +86,7 @@ const CAPABILITIES = [
 const TEAM_VALUE = [
   {
     title: "White-label & license it",
-    body: "License Verdict into your own sales pipeline under your brand — your logo on the proposal, your installers reviewing and sending the offer.",
+    body: "License HelioSense AI into your own sales pipeline under your brand — your logo on the proposal, your installers reviewing and sending the offer.",
   },
   {
     title: "Country & DEWA-aware",
@@ -109,7 +109,7 @@ const FAQS = [
   },
   {
     q: "Do I need Google API keys or billing?",
-    a: "Not to try it. Verdict ships with a mock mode that runs the entire flow on cached fixture data — no keys, no billing. Add your own Google Maps / Solar keys to switch on live geocoding, live roof analysis and photoreal 3D.",
+    a: "Not to try it. HelioSense AI ships with a mock mode that runs the entire flow on cached fixture data — no keys, no billing. Add your own Google Maps / Solar keys to switch on live geocoding, live roof analysis and photoreal 3D.",
   },
   {
     q: "Does it work for the UAE / DEWA?",
@@ -117,7 +117,7 @@ const FAQS = [
   },
   {
     q: "Can I white-label it?",
-    a: "Yes. Verdict is built to be licensed into a solar company's own pipeline: your branding on the customer proposal and email, your installers reviewing and sending the final offer.",
+    a: "Yes. HelioSense AI is built to be licensed into a solar company's own pipeline: your branding on the customer proposal and email, your installers reviewing and sending the final offer.",
   },
   {
     q: "Residential or commercial?",
@@ -136,7 +136,7 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-[#2A3038] bg-[#0A0E1A]/85 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <a href="#top" className="text-base font-semibold tracking-tight">
-            Verdict
+            HelioSense AI
           </a>
           <div className="hidden items-center gap-7 md:flex">
             <a href="#capabilities" className="text-sm text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]">
@@ -158,7 +158,7 @@ export default function Home() {
             </a>
             <a
               href="#app"
-              className="rounded-lg bg-[#3DAEFF] px-4 py-2 text-sm font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
+              className="rounded-lg bg-[#3DAEFF] px-4 py-2 text-sm font-semibold text-[#0A0E1A] transition-colors hover:brightness-110"
             >
               Design a system
             </a>
@@ -177,7 +177,7 @@ export default function Home() {
             <span className="text-[#3DAEFF]">60 seconds</span>
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-[#9BA3AF] sm:text-base">
-            Verdict turns any address into a roof-measured, engineered, and priced proposal.
+            HelioSense AI turns any address into a roof-measured, engineered, and priced proposal.
             Solar companies license it into their own sales pipeline &mdash; the AI reads the roof
             from satellite data, sizes the system, prices the bill of materials, and hands your
             installers a design that&rsquo;s ready to quote. No manual CAD, any building, any country.
@@ -185,7 +185,7 @@ export default function Home() {
           <div className="flex flex-wrap items-center justify-center gap-3">
             <a
               href="#app"
-              className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
+              className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:brightness-110"
             >
               See it on a building
             </a>
@@ -199,12 +199,12 @@ export default function Home() {
         </section>
 
         {/* The app — the existing two-pane experience, unchanged */}
-        <section id="app" aria-label="Get your solar quote" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        <section id="app" aria-label="Get your solar quote" className="scroll-mt-16 border-t border-[#2A3038]/60">
           <HomeShell />
         </section>
 
         {/* Problem vs solution */}
-        <section id="why-verdict" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        <section id="why-verdict" className="scroll-mt-16 border-t border-[#2A3038]/60">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
             <div className="flex flex-col gap-2">
               <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -262,7 +262,7 @@ export default function Home() {
         </section>
 
         {/* Capabilities — three feature sections in SurgePV's format */}
-        <section id="capabilities" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        <section id="capabilities" className="scroll-mt-16">
           <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 sm:py-20">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#3DAEFF]">
@@ -286,7 +286,7 @@ export default function Home() {
                     <span className="text-sm font-semibold tabular-nums text-[#3DAEFF]">
                       {cap.tag}
                     </span>
-                    <h3 className="text-lg font-semibold tracking-tight sm:text-xl">{cap.title}</h3>
+                    <h3 className="text-base font-semibold tracking-tight">{cap.title}</h3>
                     <p className="text-sm leading-relaxed text-[#9BA3AF]">{cap.blurb}</p>
                   </div>
                   <ul className="flex flex-col justify-center gap-3">
@@ -304,7 +304,7 @@ export default function Home() {
         </section>
 
         {/* How it works */}
-        <section id="how-it-works" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        <section id="how-it-works" className="scroll-mt-16">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
             <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">How it works</h2>
             <div className="grid gap-4 md:grid-cols-3">
@@ -320,7 +320,7 @@ export default function Home() {
         </section>
 
         {/* Outcome stats */}
-        <section id="benefits" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        <section id="benefits" className="scroll-mt-16">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
             <div className="flex flex-col gap-2">
               <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -352,7 +352,7 @@ export default function Home() {
         </section>
 
         {/* Built for solar teams — honest value props, no fabricated proof */}
-        <section id="for-teams" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        <section id="for-teams" className="scroll-mt-16">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#3DAEFF]">
@@ -377,8 +377,8 @@ export default function Home() {
           </div>
         </section>
 
-        {/* FAQ — honest answers about how Verdict actually works */}
-        <section id="faq" className="scroll-mt-16 border-t border-[#1A1F2A]">
+        {/* FAQ — honest answers about how HelioSense AI actually works */}
+        <section id="faq" className="scroll-mt-16">
           <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-16 sm:py-20">
             <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               Frequently asked questions
@@ -406,7 +406,7 @@ export default function Home() {
         </section>
 
         {/* Final CTA band */}
-        <section className="border-t border-[#1A1F2A]">
+        <section className="border-t border-[#2A3038]/60">
           <div className="mx-auto flex max-w-4xl flex-col items-center gap-5 px-6 py-16 text-center sm:py-24">
             <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
               Design it. Price it. <span className="text-[#3DAEFF]">Sell it.</span>
@@ -418,7 +418,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center justify-center gap-3">
               <a
                 href="#app"
-                className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:bg-[#2EA1F0]"
+                className="rounded-lg bg-[#3DAEFF] px-6 py-3 text-base font-semibold text-[#0A0E1A] transition-colors hover:brightness-110"
               >
                 Design a system
               </a>
@@ -436,7 +436,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-[#2A3038]">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-[#9BA3AF] sm:flex-row">
-          <span className="font-semibold text-[#F7F8FA]">Verdict</span>
+          <span className="font-semibold text-[#F7F8FA]">HelioSense AI</span>
           <span>AI-engineered solar proposals for commercial buildings</span>
           <a href="/installer" className="transition-colors hover:text-[#F7F8FA]">
             For installers
