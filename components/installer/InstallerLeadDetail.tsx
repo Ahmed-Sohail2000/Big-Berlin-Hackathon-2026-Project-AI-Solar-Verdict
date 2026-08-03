@@ -4,11 +4,11 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
+  Layers,
   Lock,
   Mail,
   MapPin,
@@ -48,7 +48,6 @@ import {
 } from "@/components/installer/BillOfMaterials";
 import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
 import { ElectricalDesignPanel } from "@/components/installer/ElectricalDesignPanel";
-import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
 import { RoofStructureEditor } from "@/components/installer/RoofStructureEditor";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
 import { SingleLineDiagram } from "@/components/installer/SingleLineDiagram";
@@ -260,6 +259,21 @@ function intakeFromLead(lead: LeadRecord): Intake {
 
 type LiveSizing = SizingResultWithMarket & Partial<SizingResultWithAllocations>;
 
+/** Installer design-workflow step — a free-jump tab, not a gated wizard.
+ *  Distinct from the deal STATUS axis (lead.status / `unlocked`), which
+ *  tracks whether the lead is accepted/offered, not which design tab is open. */
+type InstallerStep = "design" | "electrical" | "bom" | "proposal";
+
+/** Live preview surfaced by the roof-structure editor overlay while it's
+ *  open, so the MAIN 3D pane (not a second preview) reflects in-progress
+ *  edits before "Apply structure" is clicked. */
+interface RoofEditPreview {
+  totalAreaM2: number;
+  panelCount?: number;
+  tiltDegrees?: number;
+  rowSpacingMeters?: number;
+}
+
 export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const [liveSizing, setLiveSizing] = useState<LiveSizing | null>(null);
   const [liveTotalAreaM2, setLiveTotalAreaM2] = useState<number | null>(null);
@@ -292,6 +306,12 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   );
   const [showPanels, setShowPanels] = useState(true);
   const [editMode, setEditMode] = useState(false);
+  // Design-workflow tab. Freely switchable — not a linear gated wizard.
+  const [activeStep, setActiveStep] = useState<InstallerStep>("design");
+  // Roof-structure-edit overlay (mock-3D only) + its live preview, consumed
+  // by the MAIN SyntheticRoof3D instance so there is exactly one 3D view.
+  const [roofEditorOpen, setRoofEditorOpen] = useState(false);
+  const [roofEditPreview, setRoofEditPreview] = useState<RoofEditPreview | null>(null);
   // The 3D fills the dashboard; the proposal (stepper + BoM + financials +
   // engineering + actions) lives in a right slide-over the installer can
   // collapse to inspect the roof full-screen.
@@ -453,6 +473,9 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setOverlayRoofSegments([]);
     setCustomItems([]);
     setEditMode(false);
+    setActiveStep("design");
+    setRoofEditorOpen(false);
+    setRoofEditPreview(null);
     setHeatmapMeta(null);
     setHeatmapSampler(null);
     setHeatmapStatus("loading");
@@ -908,7 +931,6 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const panelCount = activePanelCount;
   const systemKwp =
     Math.round(activePanelCount * PANEL_KWP * 10) / 10;
-  const segmentsForLayout = liveSizing?.roofSegments ?? lead.publicPreview.sizing.roofSegments;
 
   // ---- AI-prefetched technical brief card data ----
   const briefSegments: RoofSegment[] =
@@ -1036,19 +1058,38 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     // Map height = min(720px, 70vh) so it dominates a typical 1080p laptop
     // screen but doesn't go absurd on a 1440p+ monitor.
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0A0E1A]">
-      {/* 3D fills the whole dashboard — the roof is the centrepiece. */}
+      {/* 3D fills the whole dashboard — the roof is the centrepiece. Hidden on
+          the Proposal step so that lighter, 3D-free "sales mode" view can go
+          full-width without the engineering workspace competing for space. */}
+      {activeStep !== "proposal" ? (
       <section className="relative flex-1 overflow-hidden bg-[#0A0E1A]">
         {isMock ? (
           // Offline simulation — no Google tiles, no console error. Shows the
           // building with the AI panel layout; live photoreal + interactive
           // panel-editing take over automatically once real keys are set.
+          // While the roof-structure-edit overlay is open, its live preview
+          // (unsaved edits) drives this SAME instance instead of a second one.
           <SyntheticRoof3D
             address={lead.publicPreview.district}
-            totalAreaM2={syntheticAreaM2}
-            panelCount={panelCount}
+            totalAreaM2={
+              roofEditorOpen && roofEditPreview ? roofEditPreview.totalAreaM2 : syntheticAreaM2
+            }
+            panelCount={
+              roofEditorOpen && roofEditPreview?.panelCount != null
+                ? roofEditPreview.panelCount
+                : panelCount
+            }
             variant={roofVariant}
-            tiltDegrees={engineering?.tiltDegrees}
-            rowSpacingMeters={engineering?.rowSpacingMeters}
+            tiltDegrees={
+              roofEditorOpen && roofEditPreview?.tiltDegrees != null
+                ? roofEditPreview.tiltDegrees
+                : engineering?.tiltDegrees
+            }
+            rowSpacingMeters={
+              roofEditorOpen && roofEditPreview?.rowSpacingMeters != null
+                ? roofEditPreview.rowSpacingMeters
+                : engineering?.rowSpacingMeters
+            }
           />
         ) : (
           <>
@@ -1082,6 +1123,55 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           <div className="font-semibold text-[#F7F8FA]">{lead.publicPreview.district}</div>
           <div className="mt-0.5 text-[#9BA3AF]">Exact rooftop model · customer details gated</div>
         </div>
+
+        {/* Roof-structure-edit toggle: bottom-left, next to (but visually
+            separate from) the panel-edit toolbar. Only meaningful in the
+            offline synthetic 3D — Cesium's photoreal tiles have no
+            addressable per-segment mesh to reshape. */}
+        <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <button
+            type="button"
+            onClick={() => isMock && setRoofEditorOpen((v) => !v)}
+            disabled={!isMock}
+            title={
+              !isMock
+                ? "Structure editing needs the simulated 3D view — not available on live photoreal data."
+                : undefined
+            }
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium backdrop-blur transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+              roofEditorOpen
+                ? "border-[#3DAEFF] bg-[#3DAEFF]/15 text-[#3DAEFF] hover:bg-[#3DAEFF]/25"
+                : "border-[#3DAEFF]/40 bg-[#0A0E1A]/85 text-[#F7F8FA] hover:border-[#3DAEFF]"
+            }`}
+            aria-pressed={roofEditorOpen}
+          >
+            <Layers size={12} />
+            {roofEditorOpen ? "Close roof editor" : "Edit roof structure"}
+          </button>
+          {!isMock ? (
+            <span className="max-w-[220px] rounded-md border border-[#2A3038] bg-[#0A0E1A]/85 px-2.5 py-1.5 text-[10px] leading-snug text-[#9BA3AF] backdrop-blur">
+              Structure editing needs the simulated 3D view — not available on live photoreal data.
+            </span>
+          ) : null}
+        </div>
+
+        {/* Roof-structure editor overlay — floats over the main 3D pane and
+            drives that SAME instance's preview (via roofEditPreview) instead
+            of embedding a second SyntheticRoof3D. */}
+        {roofEditorOpen && isMock ? (
+          <div className="absolute left-4 top-20 z-30 max-h-[calc(100%-6rem)] w-[380px] max-w-[calc(100%-2rem)] overflow-y-auto">
+            <RoofStructureEditor
+              key={`${lead.id}-${liveSegments ? "live" : "seed"}`}
+              lead={lead}
+              intake={intakeFromLead(lead)}
+              initialSegments={roofEditorInitialSegments}
+              onLeadChange={onLeadChange}
+              onPreviewChange={setRoofEditPreview}
+              onClose={() => setRoofEditorOpen(false)}
+            />
+          </div>
+        ) : null}
+
         {/* Panel-edit toolbar: bottom-right so it does not cover the
             dimensions disclosure/camera controls in the top-right corner. */}
         {(solarPanels.length > 0 || manuallyAddedPanels.length > 0) ? (
@@ -1144,93 +1234,83 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           </div>
         ) : null}
       </section>
+      ) : null}
 
       {/* Slide-over toggle — always on top so the installer can collapse the
-          proposal and inspect the roof full-screen. */}
-      <button
-        type="button"
-        onClick={() => setDrawerOpen((v) => !v)}
-        aria-expanded={drawerOpen}
-        className="absolute right-3 top-3 z-40 flex items-center gap-1.5 rounded-md border border-[#2A3038] bg-[#0A0E1A]/85 px-2.5 py-1.5 text-[11px] font-medium text-[#F7F8FA] backdrop-blur transition-colors hover:border-[#3DAEFF]/50"
-      >
-        {drawerOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        {drawerOpen ? "Hide" : "Proposal"}
-      </button>
+          proposal and inspect the roof full-screen. Hidden on the Proposal
+          step since the 3D pane isn't rendered there — nothing to reveal. */}
+      {activeStep !== "proposal" ? (
+        <button
+          type="button"
+          onClick={() => setDrawerOpen((v) => !v)}
+          aria-expanded={drawerOpen}
+          className="absolute right-3 top-3 z-40 flex items-center gap-1.5 rounded-md border border-[#2A3038] bg-[#0A0E1A]/85 px-2.5 py-1.5 text-[11px] font-medium text-[#F7F8FA] backdrop-blur transition-colors hover:border-[#3DAEFF]/50"
+        >
+          {drawerOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          {drawerOpen ? "Hide" : "Proposal"}
+        </button>
+      ) : null}
 
       {/* Proposal slide-over — deal flow, design, financials, BoM, engineering,
           customer + actions. Slides off-screen when collapsed so the 3D roof
-          gets the full canvas. */}
+          gets the full canvas. On the Proposal step it drops its width cap
+          and becomes a full-width "sales mode" page with no 3D distraction. */}
       <aside
-        className={`absolute right-0 top-0 z-20 flex h-full w-full max-w-[620px] flex-col overflow-hidden border-l border-[#2A3038] bg-[#0A0E1A]/95 backdrop-blur transition-transform duration-300 ${
-          drawerOpen ? "translate-x-0" : "translate-x-full"
+        className={`absolute right-0 top-0 z-20 flex h-full w-full flex-col overflow-hidden border-l border-[#2A3038] bg-[#0A0E1A]/95 backdrop-blur transition-transform duration-300 ${
+          activeStep === "proposal" ? "" : "max-w-[620px]"
+        } ${
+          drawerOpen || activeStep === "proposal" ? "translate-x-0" : "translate-x-full"
         }`}
       >
 
-      {/* Deal-flow stepper — horizontal numbered arrow diagram across the top.
-          Step 1 (design & tools) is complete once the AI proposal loads; step 2
-          (review) completes when the installer accepts the lead to unlock the
-          customer; step 3 (financial proposal) completes when the offer is sent
-          / emailed. Accent = active or complete, muted = pending. */}
+      {/* Design-workflow tab bar — a real, freely-jumpable step nav (not a
+          gated wizard). Deal STATUS (unlocked / offer_sent) is a separate axis
+          from this design-workflow step and is shown where it already was —
+          the "Unlocked at …" pill in Customer details. */}
       {(() => {
-        const step2Done = unlocked;
-        const step3Done = lead.status === "offer_sent" || lead.status === "closed";
-        const steps = [
-          { label: "Design & tools", state: "complete" as const },
-          {
-            label: "Review",
-            state: (step2Done ? "complete" : "active") as "complete" | "active" | "pending",
-          },
-          {
-            label: "Financial proposal",
-            state: (step3Done
-              ? "complete"
-              : step2Done
-                ? "active"
-                : "pending") as "complete" | "active" | "pending",
-          },
+        const steps: Array<{ id: InstallerStep; label: string }> = [
+          { id: "design", label: "Design" },
+          { id: "electrical", label: "Electrical" },
+          { id: "bom", label: "BoM & Pricing" },
+          { id: "proposal", label: "Proposal" },
         ];
         return (
           <nav
-            aria-label="Deal progress"
+            aria-label="Design workflow"
             className="flex-shrink-0 border-b border-[#2A3038] bg-[#0A0E1A] px-5 py-3 xl:px-6"
           >
             <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
               {steps.map((step, i) => {
-                const complete = step.state === "complete";
-                const active = step.state === "active";
-                const accent = complete || active;
+                const active = activeStep === step.id;
                 return (
-                  <Fragment key={step.label}>
-                    <li className="flex items-center gap-2">
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold tabular-nums ${
-                          active
-                            ? "border-[#3DAEFF] bg-[#3DAEFF] text-[#0A0E1A]"
-                            : complete
-                              ? "border-[#3DAEFF]/50 bg-[#3DAEFF]/10 text-[#3DAEFF]"
-                              : "border-[#2A3038] bg-[#12161C] text-[#9BA3AF]"
-                        }`}
+                  <Fragment key={step.id}>
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep(step.id)}
+                        aria-current={active ? "step" : undefined}
+                        className="flex items-center gap-2"
                       >
-                        {complete ? <Check size={13} /> : i + 1}
-                      </span>
-                      <span
-                        className={`text-xs font-medium ${
-                          accent ? "text-[#F7F8FA]" : "text-[#9BA3AF]"
-                        }`}
-                      >
-                        {step.label}
-                      </span>
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold tabular-nums transition-colors ${
+                            active
+                              ? "border-[#3DAEFF] bg-[#3DAEFF] text-[#0A0E1A]"
+                              : "border-[#2A3038] bg-[#12161C] text-[#9BA3AF] hover:border-[#3DAEFF]/50"
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <span
+                          className={`text-xs font-medium transition-colors ${
+                            active ? "text-[#F7F8FA]" : "text-[#9BA3AF] hover:text-[#F7F8FA]"
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                      </button>
                     </li>
                     {i < steps.length - 1 ? (
-                      <ArrowRight
-                        size={14}
-                        className={
-                          steps[i + 1].state === "pending"
-                            ? "text-[#2A3038]"
-                            : "text-[#3DAEFF]"
-                        }
-                        aria-hidden
-                      />
+                      <ArrowRight size={14} className="text-[#2A3038]" aria-hidden />
                     ) : null}
                   </Fragment>
                 );
@@ -1241,6 +1321,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
       })()}
 
       <section className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
+        {activeStep === "design" ? (
         <div className="flex min-w-0 flex-col gap-5">
           {/* 1 · System design summary — the headline an installer reads to a
               customer: size, hardware, yield, grid type, roof faces. */}
@@ -1352,7 +1433,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               </div>
             ) : null}
           </section>
+        </div>
+        ) : null}
 
+        {activeStep === "proposal" ? (
+        <div className="flex min-w-0 flex-col gap-5">
           {/* 2 · Financial proposal — the selling numbers for the selected
               strategy, computed client-side from existing Variant fields. */}
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
@@ -1494,7 +1579,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               </div>
             ) : null}
           </section>
+        </div>
+        ) : null}
 
+        {activeStep === "bom" ? (
+        <div className="flex min-w-0 flex-col gap-5">
           {/* 3 · Full bill of materials for the selected variant, with the
               engineer's "+ Add item" affordance for extra battery / heat pump /
               wiring lines. */}
@@ -1513,18 +1602,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>
             </div>
           ) : null}
+        </div>
+        ) : null}
 
-          {/* 4 · Technical detail — collapsible, open by default so the
-              engineering evidence stays one glance away from the proposal. */}
-          <details open className="group rounded-lg border border-[#2A3038] bg-[#12161C]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-xs font-semibold uppercase tracking-wider text-[#9BA3AF] [&::-webkit-details-marker]:hidden">
-              Technical detail · roof intelligence &amp; placement
-              <ChevronDown
-                size={14}
-                className="text-[#5B6470] transition-transform group-open:rotate-180"
-              />
-            </summary>
-            <div className="flex flex-col gap-5 border-t border-[#2A3038] p-4">
+        {activeStep === "design" ? (
+        <div className="flex min-w-0 flex-col gap-5">
           {/* AI-prefetched technical brief card */}
           <section className="rounded-lg border border-[#3DAEFF]/30 bg-gradient-to-br from-[#12161C] to-[#0A0E1A] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1572,44 +1654,6 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             </p>
           </section>
 
-          {/* Engineering parameters — orientation + tilt always render (from the
-              roof segments); the commercial design block (GCR, spacing, strings,
-              DC/AC, specific yield, PR) fills in when the sizer emits it. */}
-          <EngineeringPanel
-            engineering={engineering ?? undefined}
-            azimuthLabel={arrayAzimuthLabel}
-            tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
-            climate={liveSizing?.climate ?? lead.publicPreview.sizing.climate}
-          />
-
-          {/* Electrical design — residential string sizing (computed
-              client-side when the sizer's commercial engineering block is
-              absent) plus a wire-gauge / voltage-drop estimate for either
-              case. Display only; never feeds sizeQuote()'s output. */}
-          <ElectricalDesignPanel
-            sizing={liveSizing ?? lead.publicPreview.sizing}
-            intake={intakeFromLead(lead)}
-          />
-
-          {/* Manual roof-structure editor — parameter form (pitch / azimuth /
-              area per segment), NOT a drag/gizmo editor. Lets the installer
-              correct the AI-measured roof when the satellite read looks off;
-              re-runs the sizer live and writes back via sync-preview. Keyed by
-              lead.id so its internal edit state resets when the installer
-              switches leads. */}
-          <RoofStructureEditor
-            key={`${lead.id}-${liveSegments ? "live" : "seed"}`}
-            lead={lead}
-            intake={intakeFromLead(lead)}
-            initialSegments={roofEditorInitialSegments}
-            onLeadChange={onLeadChange}
-          />
-
-          {/* Permit-ready single-line diagram — deterministic electrical
-              schematic built from the selected variant's BoM + the sizer's
-              engineering block (string layout, inverter rating, storage). */}
-          <SingleLineDiagram bom={selectedVariant.bom} engineering={engineering} />
-
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
               Roof intelligence
@@ -1656,15 +1700,38 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               onToggleSegment={toggleSegment}
             />
           )}
-
-          <PanelLayoutPreview
-            segments={segmentsForLayout}
-            panelCount={selectedVariant.bom.panels.count}
-          />
-            </div>
-          </details>
         </div>
+        ) : null}
 
+        {activeStep === "electrical" ? (
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* Engineering parameters — orientation + tilt always render (from the
+              roof segments); the commercial design block (GCR, spacing, strings,
+              DC/AC, specific yield, PR) fills in when the sizer emits it. */}
+          <EngineeringPanel
+            engineering={engineering ?? undefined}
+            azimuthLabel={arrayAzimuthLabel}
+            tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
+            climate={liveSizing?.climate ?? lead.publicPreview.sizing.climate}
+          />
+
+          {/* Electrical design — residential string sizing (computed
+              client-side when the sizer's commercial engineering block is
+              absent) plus a wire-gauge / voltage-drop estimate for either
+              case. Display only; never feeds sizeQuote()'s output. */}
+          <ElectricalDesignPanel
+            sizing={liveSizing ?? lead.publicPreview.sizing}
+            intake={intakeFromLead(lead)}
+          />
+
+          {/* Permit-ready single-line diagram — deterministic electrical
+              schematic built from the selected variant's BoM + the sizer's
+              engineering block (string layout, inverter rating, storage). */}
+          <SingleLineDiagram bom={selectedVariant.bom} engineering={engineering} />
+        </div>
+        ) : null}
+
+        {activeStep === "proposal" ? (
         <aside className="flex min-w-0 flex-col gap-4">
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1767,6 +1834,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             {notice ? <div className="mt-3 text-xs text-[#9BA3AF]">{notice}</div> : null}
           </section>
         </aside>
+        ) : null}
       </section>
       </aside>
     </div>

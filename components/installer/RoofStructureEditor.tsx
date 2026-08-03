@@ -1,19 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Loader2, Plus, X, Trash2 } from "lucide-react";
 import type { Intake, RoofSegment } from "@/lib/contracts";
 import type { LeadRecord } from "@/lib/leads/store";
 import { sizeQuote } from "@/lib/sizing/calculate";
 import { composeFromMarket } from "@/lib/sizing/compose-from-market";
-import { SyntheticRoof3D } from "@/components/homeowner/SyntheticRoof3D";
 
 /**
  * Manual roof-structure editor -- a parameter form (NOT a drag/gizmo editor).
  * Lets the installer correct the AI-measured segments (pitch, orientation,
  * area) when the satellite read looks off, re-runs the same deterministic
- * sizer InstallerLeadDetail uses, and shows the result in a live 3D preview
- * before writing it back to the lead via PATCH .../sync-preview.
+ * sizer InstallerLeadDetail uses, and writes it back to the lead via PATCH
+ * .../sync-preview. Rendered by InstallerLeadDetail as a floating overlay
+ * over the MAIN 3D pane -- it has no 3D preview of its own; instead it
+ * reports its live (unsaved) numbers up via onPreviewChange so the single
+ * SyntheticRoof3D instance the installer is already looking at updates.
  */
 
 interface Props {
@@ -23,6 +25,16 @@ interface Props {
    *  else a single segment derived from the stored roofFacts snapshot. */
   initialSegments: RoofSegment[];
   onLeadChange: (lead: LeadRecord) => void;
+  /** Fires on every edit with the live (unsaved) recompute so the parent can
+   *  feed it into the main 3D pane's SyntheticRoof3D instance. */
+  onPreviewChange?: (preview: {
+    totalAreaM2: number;
+    panelCount?: number;
+    tiltDegrees?: number;
+    rowSpacingMeters?: number;
+  }) => void;
+  /** Closes the overlay panel (parent owns the open/closed state). */
+  onClose?: () => void;
 }
 
 interface RecomputedSizing {
@@ -68,7 +80,14 @@ function clampNumber(value: string, min: number, max: number, fallback: number):
 
 let nextSegmentKey = 0;
 
-export function RoofStructureEditor({ lead, intake, initialSegments, onLeadChange }: Props) {
+export function RoofStructureEditor({
+  lead,
+  intake,
+  initialSegments,
+  onLeadChange,
+  onPreviewChange,
+  onClose,
+}: Props) {
   const [rows, setRows] = useState<Array<RoofSegment & { key: number }>>(() =>
     initialSegments.map((s) => ({ ...s, key: nextSegmentKey++ })),
   );
@@ -92,6 +111,18 @@ export function RoofStructureEditor({ lead, intake, initialSegments, onLeadChang
     () => Math.round(segments.reduce((sum, s) => sum + (s.areaMeters2 || 0), 0) * 10) / 10,
     [segments],
   );
+
+  // Report the live (unsaved) recompute up to the parent so the MAIN 3D pane
+  // reflects in-progress edits -- there is no second preview in this panel.
+  useEffect(() => {
+    onPreviewChange?.({
+      totalAreaM2,
+      panelCount: computed?.panelCount,
+      tiltDegrees: computed?.tiltDegrees,
+      rowSpacingMeters: computed?.rowSpacingMeters,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalAreaM2, computed]);
 
   const updateRow = (key: number, patch: Partial<RoofSegment>) => {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -153,33 +184,31 @@ export function RoofStructureEditor({ lead, intake, initialSegments, onLeadChang
   };
 
   return (
-    <details className="group rounded-lg border border-[#2A3038] bg-[#12161C]">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-xs font-semibold uppercase tracking-wider text-[#9BA3AF] [&::-webkit-details-marker]:hidden">
-        Roof structure editor
-        <span className="text-[10px] normal-case tracking-normal text-[#5B6470]">
-          {rows.length} segment{rows.length === 1 ? "" : "s"} · {totalAreaM2} m²
-        </span>
-      </summary>
-
-      <div className="flex flex-col gap-4 border-t border-[#2A3038] p-4">
-        <p className="text-[11px] leading-snug text-[#5B6470]">
-          Adjust pitch, orientation, or area if the AI-measured roof looks off -- the 3D
-          preview and system size update live; Apply saves it to this lead.
-        </p>
-
-        {/* Live 3D preview -- offline procedural view, independent of the main
-            dashboard's Cesium/synthetic toggle, so the installer can watch the
-            array respond to edits without leaving this card. */}
-        <div className="relative h-56 overflow-hidden rounded-md border border-[#2A3038] bg-[#0A0E1A]">
-          <SyntheticRoof3D
-            address={lead.publicPreview.district}
-            totalAreaM2={totalAreaM2}
-            panelCount={computed?.panelCount}
-            tiltDegrees={computed?.tiltDegrees}
-            rowSpacingMeters={computed?.rowSpacingMeters}
-            variant="residential"
-          />
+    <div className="flex max-h-full flex-col rounded-lg border border-[#2A3038] bg-[#12161C] shadow-xl">
+      <div className="flex items-center justify-between gap-3 p-4 pb-0">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
+          Roof structure editor
+          <span className="ml-2 text-[10px] normal-case tracking-normal text-[#5B6470]">
+            {rows.length} segment{rows.length === 1 ? "" : "s"} · {totalAreaM2} m²
+          </span>
         </div>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close roof structure editor"
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-[#2A3038] text-[#9BA3AF] transition-colors hover:border-[#3DAEFF]/50 hover:text-[#F7F8FA]"
+          >
+            <X size={13} />
+          </button>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-4 overflow-y-auto p-4">
+        <p className="text-[11px] leading-snug text-[#5B6470]">
+          Adjust pitch, orientation, or area if the AI-measured roof looks off -- the main
+          3D view and system size update live; Apply saves it to this lead.
+        </p>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2.5 py-2">
@@ -317,7 +346,7 @@ export function RoofStructureEditor({ lead, intake, initialSegments, onLeadChang
           </div>
         </div>
       </div>
-    </details>
+    </div>
   );
 }
 

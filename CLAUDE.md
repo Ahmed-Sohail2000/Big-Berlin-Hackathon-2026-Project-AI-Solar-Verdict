@@ -13,6 +13,7 @@ It covers **both residential and commercial** buildings (auto-detected from the 
 
 ## Commands
 - **Package manager is pnpm, not npm.** `node_modules` is pnpm-linked (see the `.pnpm` store); running `npm install` here corrupts npm's own dependency resolver. Use `pnpm <script>` for everything (`pnpm dev`, `pnpm test`, `pnpm lint`, `pnpm build`, `pnpm test:e2e`).
+- **Single test file**: `MOCK_MODE=true pnpm test lib/sizing/__tests__/commercial.test.ts` (vitest matches by path substring, so `pnpm test commercial` also works). Type-check only: `pnpm tsc --noEmit`.
 - **Data Pipeline**: `pnpm prebake` (CSV → JSON) then `pnpm prebake:heatmaps` (JSON → PNG) — must run in this order.
 
 ## MOCK_MODE — the offline-first workflow
@@ -36,9 +37,13 @@ This machine has **no live API keys / no GCP billing**, so almost all work happe
 - `lib/sizing/calculate.ts` — deterministic sizing engine; `VARIANT_CONFIGS` size factors (margin 0.75 / closeRate 0.88 / ltv 1.0) make the three quotes genuinely different. Pure post-steps: grid-policy, commercial-policy, climate.
 - `lib/sizing/climate.ts` — `climateProfileFor(country)` returns per-country net specific yield (DE 950 unchanged/golden-safe, AE 1530 after soiling+temperature losses, etc.). Absent country → DE.
 - `lib/sizing/compose-from-market.ts` — BoM composition; for `country === "AE"` adds a DEWA-compliant DC isolator (IEC 60947-3) and renames the grid line for DEWA interconnection.
+- `lib/sizing/roi-optimizer.ts` — 25-year NPV panel-count optimizer + marginal-payback battery sizing; used by `compose-from-market.ts`, not by the legacy `calculate.ts` path.
+- `lib/sizing/electrical.ts` — standalone SurgePV-style calculators (temperature-corrected residential string sizing, voltage-drop/wire-gauge sizing). Deliberately **not** wired into `sizeQuote()`'s pipeline — kept as pure functions the UI calls on demand so the 5 golden-profile tests stay byte-identical. Only `commercial-policy.ts`'s string sizing runs inside the pipeline itself (commercial/flat roofs only).
 - `lib/currency.ts` — `CurrencyCode = "EUR"|"USD"|"AED"`, `currencyForCountry`, `formatMoney`.
+- `lib/leads/store.ts` — in-memory lead store (`Map` on `globalThis`, dev-server-lifetime only). `buildLead()` snapshots `sizing`/`roofFacts` into `publicPreview` once at creation; that snapshot is the single source of truth the dashboard list (`InstallerMarketplace.tsx`) always reads. Any installer-side recompute/edit (Recalculate, manual roof-structure edit) must call `updateLeadPreview()` — via `PATCH /api/leads/[id]` with `action: "sync-preview"` — and then the caller's `onLeadChange` prop, or the list and the detail view will silently diverge again.
 - `data/fixtures/demo-locations.ts` — curated Berlin/Dubai residential+commercial demo set with `resolveDemoLocation`, `nearestDemoByCoords`, `mockRoofFacts`.
-- `components/homeowner/SyntheticRoof3D*.tsx` — offline procedural 3D (pitched house vs flat-roof array) shown in MOCK_MODE; live Cesium photoreal when keys exist.
+- `components/homeowner/SyntheticRoof3D*.tsx` — offline procedural 3D (pitched house vs flat-roof array), react-three-fiber. Shown in MOCK_MODE on the homeowner side; live Cesium photoreal when keys exist. Reused by `components/installer/RoofStructureEditor.tsx` for a live preview since Cesium's photoreal tiles have no per-segment mesh to drive from an edit form.
+- `components/installer/RoofStructureEditor.tsx` — parameter-form roof-structure editor (pitch/azimuth/area per segment, not freeform geometry — `lib/contracts.ts`'s `RoofSegment` has no polygon geometry to drag). Recomputes via `composeFromMarket`/`sizeQuote` on every edit and persists through the `sync-preview` pattern above.
 - `components/installer/sld.ts` + `SingleLineDiagram.tsx` — pure `buildSldModel(bom, engineering)` + inline-SVG permit-style single-line diagram.
 
 ## Claude Code tooling in this repo (`.claude/`)
