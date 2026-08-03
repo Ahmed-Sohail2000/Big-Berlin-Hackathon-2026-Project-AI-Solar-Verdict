@@ -10,7 +10,7 @@
 
 Type your address → see a satellite of your roof → answer 4 questions → get 3 BoM variants grounded in 1,277 real Reonic projects → send to a certified installer → installer reviews/edits/approves → final BoM lands back on your phone.
 
-Live at **https://ai-solar-verdict.vercel.app** · GitHub at **github.com/Ahmed-Sohail2000/Big-Berlin-Hackathon-2026-Project-AI-Solar-Verdict**
+Live at **https://ai-solar-heliosense.vercel.app** · GitHub at **github.com/Ahmed-Sohail2000/Big-Berlin-Hackathon-2026-Project-AI-Solar-Verdict**
 
 ---
 

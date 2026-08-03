@@ -10,7 +10,7 @@ import { test, expect } from "@playwright/test";
  * location — that behavior only exists when MOCK_MODE is set). "Berlin house"
  * deterministically resolves to the residential demo (84 m², gable roof).
  */
-const baseUrl = process.env.BASE_URL ?? "https://ai-solar-verdict.vercel.app";
+const baseUrl = process.env.BASE_URL ?? "https://ai-solar-heliosense.vercel.app";
 const isLocal = baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1");
 
 test.describe("MOCK_MODE homeowner → installer flow", () => {

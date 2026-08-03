@@ -13,7 +13,7 @@ pnpm tsc --noEmit
 pnpm test
 ```
 
-**e2e gotcha**: `playwright.config.ts`'s default `baseURL` is the deployed Vercel URL (`https://ai-solar-verdict.vercel.app`), not localhost. Running `pnpm test:e2e` bare tests the *live deployed site*, not your local changes. To actually test local changes:
+**e2e gotcha**: `playwright.config.ts`'s default `baseURL` is the deployed Vercel URL (`https://ai-solar-heliosense.vercel.app`), not localhost. Running `pnpm test:e2e` bare tests the *live deployed site*, not your local changes. To actually test local changes:
 
 ```bash
 MOCK_MODE=true NEXT_PUBLIC_MOCK_MODE=true pnpm dev &   # wait for :3000 to respond
