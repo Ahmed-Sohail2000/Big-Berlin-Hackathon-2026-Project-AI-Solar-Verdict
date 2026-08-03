@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { BomSchema } from "@/data/schema";
-import { acceptLead, approveLead, deleteLead, getLead, sendOffer } from "@/lib/leads/store";
+import {
+  acceptLead,
+  approveLead,
+  deleteLead,
+  getLead,
+  sendOffer,
+  updateLeadPreview,
+} from "@/lib/leads/store";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +41,28 @@ const PatchSchema = z.discriminatedUnion("action", [
     totalEur: z.number().positive().optional(),
     installerNotes: z.string().optional(),
   }),
+  z.object({
+    action: z.literal("sync-preview"),
+    roofFacts: z
+      .object({
+        totalAreaM2: z.number().optional(),
+        pitchDeg: z.number().optional(),
+        azimuth: z.number().optional(),
+        segmentsCount: z.number().optional(),
+      })
+      .optional(),
+    panelCount: z.number().positive().optional(),
+    roofSegments: z
+      .array(
+        z.object({
+          pitchDegrees: z.number(),
+          azimuthDegrees: z.number(),
+          areaMeters2: z.number(),
+          annualSunshineHours: z.number(),
+        }),
+      )
+      .optional(),
+  }),
 ]);
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
@@ -53,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!parsed.success) {
     return NextResponse.json(
       {
-        error: "invalid patch payload (expected action: approve | accept | offer)",
+        error: "invalid patch payload (expected action: approve | accept | offer | sync-preview)",
         issues: parsed.error.issues.map(
           (i) => `${i.path.join(".") || "(root)"}: ${i.message}`,
         ),
@@ -78,6 +107,16 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       acceptedByInstallerId: body.acceptedByInstallerId,
       installerName: body.installerName,
       installerLogoEmoji: body.installerLogoEmoji,
+    });
+    if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ lead: updated });
+  }
+
+  if (body.action === "sync-preview") {
+    const updated = updateLeadPreview(id, {
+      roofFacts: body.roofFacts,
+      panelCount: body.panelCount,
+      roofSegments: body.roofSegments,
     });
     if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ lead: updated });

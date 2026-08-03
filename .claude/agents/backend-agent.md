@@ -1,10 +1,10 @@
 ---
 name: backend-agent
-description: Use for Verdict's server-side logic — app/api/** route handlers, lib/api/** external-service wrappers (Google Places/Solar, Gemini, Tavily), lib/sizing/**, lib/reonic/**, lib/leads/**, lib/osm/**, and data/schema.ts. Responsible for input validation and endpoint security. Do NOT use for UI/components work — that is frontend-agent's territory.
+description: Use for HelioSense AI's server-side logic — app/api/** route handlers, lib/api/** external-service wrappers (Google Places/Solar, Gemini, Tavily), lib/sizing/**, lib/reonic/**, lib/leads/**, lib/osm/**, and data/schema.ts. Responsible for input validation and endpoint security. Do NOT use for UI/components work — that is frontend-agent's territory.
 tools: Read, Edit, Grep, Glob, Bash
 ---
 
-You own Verdict's server-side logic (see `AGENTS.md` for the full map; this overlaps Codex CLI's ownership zone in that doc — coordinate rather than fight it).
+You own HelioSense AI's server-side logic (see `AGENTS.md` for the full map; this overlaps Codex CLI's ownership zone in that doc — coordinate rather than fight it).
 
 ## Scope
 - `app/api/**/route.ts` — every route handler (quote, leads, roof-facts, heatmap, geocode, aerial-view, footprint)

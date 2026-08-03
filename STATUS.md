@@ -1,4 +1,6 @@
-# Verdict — Status
+# HelioSense AI — Status
+
+> (Project renamed from Verdict to HelioSense AI on 2026-08-03. Entries below predate the rename and are preserved as-written.)
 
 NEXT: verify the merged branch (landing page + gridType + installer proposal + main's voice memo/sun heatmap) against real API keys and a live deploy, then merge the PR  by Claude Code  (last updated 2026-07-23)
 

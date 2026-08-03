@@ -1,4 +1,4 @@
-# Deploying Verdict to Vercel
+# Deploying HelioSense AI to Vercel
 
 This app is a standard Next.js 15 project. It runs in two modes:
 

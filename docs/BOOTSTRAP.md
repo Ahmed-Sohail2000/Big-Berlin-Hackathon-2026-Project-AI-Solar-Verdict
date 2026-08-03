@@ -1,5 +1,7 @@
 # Verdict — Bootstrap Protocol
 
+> (Project renamed from Verdict to HelioSense AI on 2026-08-03. This is the original hackathon bootstrap doc, preserved as-is below for historical accuracy.)
+
 **Read this file first if you are a fresh AI session opening this repo cold.** Then read `STATUS.md` to see where the build is right now. Then read `PLAN.md` for the product spec and `SPRINT.md` for the sprint cadence.
 
 The team uses **three AI coding assistants in parallel** to ship a 24h hackathon project. This file defines who owns what, how we coordinate, and the exact commands to take an empty laptop to a deployed Vercel preview.

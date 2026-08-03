@@ -1,4 +1,4 @@
-# GOAL — Verdict: a presentable, ready-to-use commercial solar AI app
+# GOAL — HelioSense AI: a presentable, ready-to-use commercial solar AI app
 
 **Definition of done:** a business owner enters their building address, sees their
 real roof in photoreal 3D with the AI's recommended panel layout placed on it,

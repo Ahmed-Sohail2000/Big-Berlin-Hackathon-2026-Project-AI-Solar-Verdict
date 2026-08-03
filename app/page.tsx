@@ -7,7 +7,7 @@ const OLD_WAY = [
   "You wait, and the estimate still moves after the survey",
 ];
 
-const VERDICT_WAY = [
+const AI_WAY = [
   "The AI reads the real 3D roof from satellite / Solar data",
   "Panels placed and the system sized with real engineering rules",
   "A fully costed, itemized proposal returned in seconds",
@@ -204,7 +204,7 @@ export default function Home() {
         </section>
 
         {/* Problem vs solution */}
-        <section id="why-verdict" className="scroll-mt-16 border-t border-[#2A3038]/60">
+        <section id="why-heliosense" className="scroll-mt-16 border-t border-[#2A3038]/60">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 sm:py-20">
             <div className="flex flex-col gap-2">
               <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -232,7 +232,7 @@ export default function Home() {
                 <h3 className="mb-1 text-base font-semibold">The AI way</h3>
                 <p className="mb-4 text-xs uppercase tracking-wider text-[#3DAEFF]">Engineering, not estimates</p>
                 <ul className="flex flex-col gap-3">
-                  {VERDICT_WAY.map((item) => (
+                  {AI_WAY.map((item) => (
                     <li key={item} className="flex items-start gap-3 text-sm text-[#F7F8FA]">
                       <span aria-hidden className="mt-0.5 text-[#62E6A7]">&#10003;</span>
                       {item}

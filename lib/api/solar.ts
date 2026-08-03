@@ -2,7 +2,7 @@
  * Google Solar API client (server-side only).
  *
  * Wraps `buildingInsights:findClosest` and `dataLayers:get` with the standard
- * Verdict resilience pattern: 4s timeout, cached fixture fallback, ApiStatus
+ * HelioSense AI resilience pattern: 4s timeout, cached fixture fallback, ApiStatus
  * always populated.
  *
  * Never call from the browser — uses the unrestricted server-only key.

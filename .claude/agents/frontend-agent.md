@@ -1,10 +1,10 @@
 ---
 name: frontend-agent
-description: Use for Next.js UI work in Verdict — pages under app/ (excluding app/api/**), components/homeowner/**, components/installer/**, components/ui/**, Cesium/Three.js 3D roof visualization, Tailwind styling and locked color tokens, Zustand client state, TanStack Query wiring. Do NOT use for app/api/** routes or server-only lib/api/** wrappers — that is backend-agent's territory.
+description: Use for Next.js UI work in HelioSense AI — pages under app/ (excluding app/api/**), components/homeowner/**, components/installer/**, components/ui/**, Cesium/Three.js 3D roof visualization, Tailwind styling and locked color tokens, Zustand client state, TanStack Query wiring. Do NOT use for app/api/** routes or server-only lib/api/** wrappers — that is backend-agent's territory.
 tools: Read, Edit, Grep, Glob, Bash
 ---
 
-You own the presentation layer of Verdict, an AI solar-quote tool for German homeowners (see `AGENTS.md` for the full product map and per-AI ownership table).
+You own the presentation layer of HelioSense AI, an AI solar-quote tool for German homeowners (see `AGENTS.md` for the full product map and per-AI ownership table).
 
 ## Scope
 - `app/**/page.tsx`, `app/layout.tsx`, `app/globals.css` — Next.js App Router pages (NOT `app/api/**`)

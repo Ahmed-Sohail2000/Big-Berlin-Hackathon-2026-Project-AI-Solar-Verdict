@@ -32,6 +32,11 @@ interface Tile {
   label: string;
   value: string;
   hint?: string;
+  /** One-sentence plain-language explanation of what this metric means in
+   *  practical terms — distinct from `hint` (which stays short technical
+   *  shorthand, e.g. "GCR"). Keeps the real engineering label + number
+   *  visible for the installer while giving a layperson-readable gloss. */
+  caption?: string;
 }
 
 function fmt(n: number, digits = 2): string {
@@ -54,33 +59,45 @@ export function EngineeringPanel({
       label: "Array orientation",
       value: azimuthLabel,
       hint: "AI-placed azimuth",
+      caption: "Which way the panels face — south-facing arrays generally produce the most energy.",
     });
   }
   const tiltDegrees =
     typeof eng.tiltDegrees === "number" ? eng.tiltDegrees : tiltFallbackDegrees;
   if (typeof tiltDegrees === "number") {
-    tiles.push({ label: "Array tilt", value: `${fmt(tiltDegrees, 1)}°` });
+    tiles.push({
+      label: "Array tilt",
+      value: `${fmt(tiltDegrees, 1)}°`,
+      caption: "How steeply the panels are angled off horizontal.",
+    });
   }
   if (typeof eng.groundCoverageRatio === "number") {
     tiles.push({
       label: "Ground coverage",
       value: fmt(eng.groundCoverageRatio),
       hint: "GCR",
+      caption: "How densely panels pack the available roof or ground area.",
     });
   }
   if (typeof eng.rowSpacingMeters === "number") {
     tiles.push({
       label: "Inter-row spacing",
       value: `${fmt(eng.rowSpacingMeters)} m`,
+      caption: "Gap left between panel rows so one row doesn't shade the next.",
     });
   }
   if (typeof eng.dcAcRatio === "number") {
-    tiles.push({ label: "DC/AC ratio", value: `${fmt(eng.dcAcRatio)} : 1` });
+    tiles.push({
+      label: "DC/AC ratio",
+      value: `${fmt(eng.dcAcRatio)} : 1`,
+      caption: "How much panel capacity is paired with the inverter's output capacity.",
+    });
   }
   if (typeof eng.specificYieldKwhPerKwp === "number") {
     tiles.push({
       label: "Specific yield",
       value: `${Math.round(eng.specificYieldKwhPerKwp).toLocaleString()} kWh/kWp`,
+      caption: "Expected annual energy per kW of installed capacity at this site.",
     });
   }
   if (typeof eng.performanceRatio === "number") {
@@ -88,6 +105,7 @@ export function EngineeringPanel({
     tiles.push({
       label: "Performance ratio",
       value: `${Math.round(eng.performanceRatio * 100)}%`,
+      caption: "How much of the theoretical maximum output the system actually delivers.",
     });
   }
   if (
@@ -98,14 +116,20 @@ export function EngineeringPanel({
       label: "String configuration",
       value: `${eng.modulesPerString} × ${eng.stringCount}`,
       hint: "modules/string × strings",
+      caption: "How panels are wired together into series chains feeding the inverter.",
     });
   } else if (typeof eng.modulesPerString === "number") {
     tiles.push({
       label: "Modules per string",
       value: String(eng.modulesPerString),
+      caption: "How many panels are wired in series in each chain.",
     });
   } else if (typeof eng.stringCount === "number") {
-    tiles.push({ label: "String count", value: String(eng.stringCount) });
+    tiles.push({
+      label: "String count",
+      value: String(eng.stringCount),
+      caption: "How many separate panel chains feed the inverter.",
+    });
   }
 
   if (tiles.length === 0 && !climate) return null;
@@ -135,6 +159,11 @@ export function EngineeringPanel({
               </div>
               {tile.hint ? (
                 <div className="mt-0.5 text-[9px] text-[#5B6470]">{tile.hint}</div>
+              ) : null}
+              {tile.caption ? (
+                <div className="mt-1 text-[9px] leading-snug text-[#5B6470]">
+                  {tile.caption}
+                </div>
               ) : null}
             </div>
           ))}

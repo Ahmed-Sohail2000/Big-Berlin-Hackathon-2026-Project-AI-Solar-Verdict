@@ -10,7 +10,7 @@
  *      jobs typically complete in 1–3 minutes; we DO NOT poll inside the
  *      request — the caller's UI shows "Generating cinematic…" and re-fetches.
  *
- * This wrapper uses the standard Verdict resilience pattern: 4-second budget
+ * This wrapper uses the standard HelioSense AI resilience pattern: 4-second budget
  * via withTimeout(), GOOGLE_MAPS_API_KEY (server-only), no fixture fallback
  * (Aerial View has no useful "cached" version — either the rendered video is
  * available or it isn't).

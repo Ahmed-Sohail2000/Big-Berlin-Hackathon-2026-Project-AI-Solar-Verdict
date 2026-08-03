@@ -24,7 +24,7 @@ export function InstallerApprovedToast() {
 
   useEffect(() => {
     let cancelled = false;
-    const leadId = window.localStorage.getItem("verdict.lastLeadId") ?? FALLBACK_LEAD_ID;
+    const leadId = window.localStorage.getItem("heliosense.lastLeadId") ?? FALLBACK_LEAD_ID;
 
     const tick = async () => {
       if (cancelled) return;

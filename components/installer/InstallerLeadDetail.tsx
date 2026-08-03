@@ -49,6 +49,7 @@ import {
 import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
 import { ElectricalDesignPanel } from "@/components/installer/ElectricalDesignPanel";
 import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
+import { RoofStructureEditor } from "@/components/installer/RoofStructureEditor";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
 import { SingleLineDiagram } from "@/components/installer/SingleLineDiagram";
 import {
@@ -338,6 +339,106 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     baseVariants[1] ??
     baseVariants[0];
 
+  // Core fetch-roof-facts + recompute-sizing logic, extracted so it can be
+  // called both by the on-mount/lead-change effect below AND by the manual
+  // "Recalculate" action in the KPI header. Pure w.r.t. component state — it
+  // returns the computed values and lets the caller decide what to do with
+  // them (setState for the effect, setState + PATCH-to-lead for the button).
+  const fetchAndComputeLiveRoofFacts = useCallback(
+    async (leadArg: LeadRecord): Promise<{
+      source: "live" | "cached" | "mock" | null;
+      sizing: LiveSizing;
+      segments: RoofSegment[];
+      rawSegments: NonNullable<RoofFactsResponse["segments"]>;
+      totalAreaM2: number | null;
+      pitchDeg: number;
+      solarPanels: SolarPanelEntry[];
+    } | null> => {
+      const { lat, lng } = leadArg.privateDetails;
+      const res = await fetch(`/api/roof-facts?lat=${lat}&lng=${lng}`, { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = (await res.json()) as RoofFactsResponse;
+
+      const rawSegments = Array.isArray(data.segments) ? data.segments : [];
+      if (rawSegments.length === 0) return null;
+      const segments: RoofSegment[] = rawSegments.map((s) => ({
+        pitchDegrees: s.pitchDegrees ?? 0,
+        azimuthDegrees: s.azimuthDegrees ?? 180,
+        areaMeters2: s.areaMeters2 ?? 0,
+        annualSunshineHours: s.annualSunshineHours ?? 1000,
+      }));
+      const intake = intakeFromLead(leadArg);
+
+      // Primary path: market-driven composer.
+      // Fallback path: legacy sizeQuote so the demo never crashes.
+      let sizing: LiveSizing | null = null;
+      try {
+        const market = composeFromMarket({ intake, roofSegments: segments });
+        if (market) sizing = market as LiveSizing;
+      } catch (err) {
+        console.warn("composeFromMarket failed, falling back to sizeQuote", err);
+      }
+      if (!sizing) {
+        try {
+          sizing = sizeQuote(intake, segments) as LiveSizing;
+        } catch (innerErr) {
+          console.error("sizeQuote fallback also failed", innerErr);
+        }
+      }
+      if (!sizing) return null;
+
+      // The per-segment placement table must agree with the BoM the
+      // installer sees, which is anchored to the panel count the homeowner
+      // was quoted (lead.publicPreview). The market composer doesn't emit
+      // allocations at all, and the sizeQuote fallback allocates its own
+      // (possibly larger) count — recompute against the anchored count so
+      // every displayed number tells the same story.
+      try {
+        const anchorCount = leadArg.publicPreview.sizing.panelCount;
+        const allocations = allocatePanelsToSegments(segments, anchorCount);
+        sizing.segmentAllocations = allocations;
+        sizing.mpptStringCount = new Set(
+          allocations.filter((a) => a.status === "used").map((a) => a.stringId),
+        ).size;
+      } catch (allocErr) {
+        console.warn("allocatePanelsToSegments failed", allocErr);
+      }
+
+      // Wire up Google's per-panel placement for the Cesium overlay. Each
+      // panel inherits its segment's azimuth (rounded ints from the API) so
+      // the rectangle rotates to the roof slope, AND its segment's WGS84
+      // height (planeHeightAtCenterMeters) so it sits ON the roof rather
+      // than at sea level. The roof-facts route now returns both directly
+      // on each panel — we trust those when present, fall back to segments
+      // lookup when not.
+      const rawPanels = Array.isArray(data.solarPanels) ? data.solarPanels : [];
+      const enriched: SolarPanelEntry[] = rawPanels.map((p) => ({
+        center: { latitude: p.center.latitude, longitude: p.center.longitude },
+        orientation: p.orientation,
+        segmentIndex: p.segmentIndex,
+        yearlyEnergyDcKwh: p.yearlyEnergyDcKwh,
+        segmentAzimuthDegrees:
+          p.segmentAzimuthDegrees ?? segments[p.segmentIndex]?.azimuthDegrees,
+        segmentPitchDegrees:
+          p.segmentPitchDegrees ?? segments[p.segmentIndex]?.pitchDegrees,
+        segmentHeightMeters: p.segmentHeightMeters,
+        segmentCenterLat: p.segmentCenterLat,
+        segmentCenterLng: p.segmentCenterLng,
+      }));
+
+      return {
+        source: data.source ?? null,
+        sizing,
+        segments,
+        rawSegments,
+        totalAreaM2: typeof data.totalAreaM2 === "number" ? data.totalAreaM2 : null,
+        pitchDeg: median(segments.map((s) => s.pitchDegrees)),
+        solarPanels: enriched,
+      };
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     setLiveLoading(true);
@@ -357,98 +458,21 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setHeatmapStatus("loading");
     setSunLayerVisible(true);
 
-    const { lat, lng } = lead.privateDetails;
-    fetch(`/api/roof-facts?lat=${lat}&lng=${lng}`, { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error("roof-facts failed");
-        return res.json() as Promise<RoofFactsResponse>;
-      })
-      .then((data) => {
+    fetchAndComputeLiveRoofFacts(lead)
+      .then((result) => {
         if (cancelled) return;
-        const rawSegments = Array.isArray(data.segments) ? data.segments : [];
-        if (rawSegments.length === 0) {
+        if (!result) {
           setLiveError(true);
           setLiveLoading(false);
           return;
         }
-        const segments: RoofSegment[] = rawSegments.map((s) => ({
-          pitchDegrees: s.pitchDegrees ?? 0,
-          azimuthDegrees: s.azimuthDegrees ?? 180,
-          areaMeters2: s.areaMeters2 ?? 0,
-          annualSunshineHours: s.annualSunshineHours ?? 1000,
-        }));
-        const intake = intakeFromLead(lead);
-
-        // Primary path: market-driven composer.
-        // Fallback path: legacy sizeQuote so the demo never crashes.
-        let sizing: LiveSizing | null = null;
-        try {
-          const market = composeFromMarket({ intake, roofSegments: segments });
-          if (market) sizing = market as LiveSizing;
-        } catch (err) {
-          console.warn("composeFromMarket failed, falling back to sizeQuote", err);
-        }
-        if (!sizing) {
-          try {
-            sizing = sizeQuote(intake, segments) as LiveSizing;
-          } catch (innerErr) {
-            console.error("sizeQuote fallback also failed", innerErr);
-          }
-        }
-
-        if (!sizing) {
-          setLiveError(true);
-          setLiveLoading(false);
-          return;
-        }
-
-        // The per-segment placement table must agree with the BoM the
-        // installer sees, which is anchored to the panel count the homeowner
-        // was quoted (lead.publicPreview). The market composer doesn't emit
-        // allocations at all, and the sizeQuote fallback allocates its own
-        // (possibly larger) count — recompute against the anchored count so
-        // every displayed number tells the same story.
-        try {
-          const anchorCount = lead.publicPreview.sizing.panelCount;
-          const allocations = allocatePanelsToSegments(segments, anchorCount);
-          sizing.segmentAllocations = allocations;
-          sizing.mpptStringCount = new Set(
-            allocations.filter((a) => a.status === "used").map((a) => a.stringId),
-          ).size;
-        } catch (allocErr) {
-          console.warn("allocatePanelsToSegments failed", allocErr);
-        }
-
-        setLiveSource(data.source ?? null);
-        setLiveSizing(sizing);
-        setLiveSegments(segments);
-        setOverlayRoofSegments(rawSegments);
-        setLiveTotalAreaM2(typeof data.totalAreaM2 === "number" ? data.totalAreaM2 : null);
-        setLivePitchDeg(median(segments.map((s) => s.pitchDegrees)));
-
-        // Wire up Google's per-panel placement for the Cesium overlay. Each
-        // panel inherits its segment's azimuth (rounded ints from the API) so
-        // the rectangle rotates to the roof slope, AND its segment's WGS84
-        // height (planeHeightAtCenterMeters) so it sits ON the roof rather
-        // than at sea level. The roof-facts route now returns both directly
-        // on each panel — we trust those when present, fall back to segments
-        // lookup when not.
-        const rawPanels = Array.isArray(data.solarPanels) ? data.solarPanels : [];
-        const enriched: SolarPanelEntry[] = rawPanels.map((p) => ({
-          center: { latitude: p.center.latitude, longitude: p.center.longitude },
-          orientation: p.orientation,
-          segmentIndex: p.segmentIndex,
-          yearlyEnergyDcKwh: p.yearlyEnergyDcKwh,
-          segmentAzimuthDegrees:
-            p.segmentAzimuthDegrees ?? segments[p.segmentIndex]?.azimuthDegrees,
-          segmentPitchDegrees:
-            p.segmentPitchDegrees ?? segments[p.segmentIndex]?.pitchDegrees,
-          segmentHeightMeters: p.segmentHeightMeters,
-          segmentCenterLat: p.segmentCenterLat,
-          segmentCenterLng: p.segmentCenterLng,
-        }));
-        setSolarPanels(enriched);
-
+        setLiveSource(result.source);
+        setLiveSizing(result.sizing);
+        setLiveSegments(result.segments);
+        setOverlayRoofSegments(result.rawSegments);
+        setLiveTotalAreaM2(result.totalAreaM2);
+        setLivePitchDeg(result.pitchDeg);
+        setSolarPanels(result.solarPanels);
         setLiveLoading(false);
       })
       .catch(() => {
@@ -460,7 +484,91 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [lead]);
+    // Deliberately keyed on lead.id (not the `lead` object) — the object
+    // reference also changes when Recalculate / the roof-structure editor's
+    // Apply / accept / offer PATCH the SAME lead's preview and the parent
+    // pushes the updated record back down via onLeadChange. If this effect
+    // re-ran on every such content-only update it would blow away in-progress
+    // manual panel edits, custom BoM lines, and re-fetch roof-facts a second
+    // time right after the action's own fetch already got fresh data. It
+    // should only reset/refetch when the installer switches to a genuinely
+    // different lead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id, fetchAndComputeLiveRoofFacts]);
+
+  // Manual "Recalculate" action — re-fetches roof facts + re-runs sizing,
+  // then writes the fresh totalAreaM2/pitchDeg (and panelCount if the
+  // anchored count changed) back to the lead via PATCH .../sync-preview, so
+  // the marketplace list card and this detail view agree on the same
+  // numbers going forward instead of only this tab seeing the live values.
+  const [recalcBusy, setRecalcBusy] = useState(false);
+  const [recalcNotice, setRecalcNotice] = useState<string | null>(null);
+
+  const recalculate = useCallback(async () => {
+    setRecalcBusy(true);
+    setRecalcNotice(null);
+    try {
+      const result = await fetchAndComputeLiveRoofFacts(lead);
+      if (!result) {
+        setRecalcNotice("Recalculate failed — try again.");
+        return;
+      }
+      setLiveError(false);
+      setLiveSource(result.source);
+      setLiveSizing(result.sizing);
+      setLiveSegments(result.segments);
+      setOverlayRoofSegments(result.rawSegments);
+      setLiveTotalAreaM2(result.totalAreaM2);
+      setLivePitchDeg(result.pitchDeg);
+      setSolarPanels(result.solarPanels);
+
+      const freshPanelCount = result.sizing.panelCount;
+      const payload: {
+        action: "sync-preview";
+        roofFacts: { totalAreaM2?: number; pitchDeg?: number };
+        panelCount?: number;
+      } = {
+        action: "sync-preview",
+        roofFacts: {
+          ...(typeof result.totalAreaM2 === "number"
+            ? { totalAreaM2: Math.round(result.totalAreaM2 * 10) / 10 }
+            : {}),
+          pitchDeg: Math.round(result.pitchDeg),
+        },
+      };
+      if (
+        typeof freshPanelCount === "number" &&
+        freshPanelCount !== lead.publicPreview.sizing.panelCount
+      ) {
+        payload.panelCount = freshPanelCount;
+      }
+
+      const res = await fetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json().catch(() => null)) as { lead?: LeadRecord } | null;
+      if (!res.ok || !data?.lead) {
+        setRecalcNotice("Roof re-measured, but saving to the lead failed.");
+        return;
+      }
+      onLeadChange(data.lead);
+      setRecalcNotice("Updated");
+    } catch {
+      setRecalcNotice("Recalculate failed — try again.");
+    } finally {
+      setRecalcBusy(false);
+    }
+  }, [lead, fetchAndComputeLiveRoofFacts, onLeadChange]);
+
+  // Clear the transient "Updated" / error notice a few seconds after it
+  // appears so it doesn't linger indefinitely next to the KPI tiles.
+  useEffect(() => {
+    if (!recalcNotice) return;
+    const t = setTimeout(() => setRecalcNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [recalcNotice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -785,11 +893,15 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     (a) => a.status === "used",
   );
 
-  const roofAreaValue =
-    liveTotalAreaM2 ?? lead.publicPreview.roofFacts.totalAreaM2 ?? 0;
-  const pitchValue = livePitchDeg
-    ? Math.round(livePitchDeg)
-    : lead.publicPreview.roofFacts.pitchDeg ?? "—";
+  // KPI display is anchored to the STORED snapshot (lead.publicPreview),
+  // not the live recompute — otherwise a live re-fetch that differs even
+  // slightly from the creation-time snapshot makes the marketplace list card
+  // and this detail view permanently disagree (see Recalculate action below,
+  // which is the only thing allowed to update the stored snapshot). liveSizing
+  // / liveTotalAreaM2 / livePitchDeg remain available for the engineering
+  // panels and recompute logic elsewhere in this file.
+  const roofAreaValue = lead.publicPreview.roofFacts.totalAreaM2 ?? 0;
+  const pitchValue = lead.publicPreview.roofFacts.pitchDeg ?? "—";
   // When the installer toggles panels off, the headline numbers shift to the
   // active count. systemKwp uses the same 0.44 kWp/panel constant the sizer
   // assumes (lib/sizing/calculate.ts: 440 W modules).
@@ -810,6 +922,22 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const briefRoofArea = Math.round(
     liveTotalAreaM2 ?? lead.publicPreview.roofFacts.totalAreaM2 ?? 0,
   );
+
+  // Seed for the manual roof-structure editor: the live Solar-API segments
+  // when loaded, else a single segment derived from the stored roofFacts
+  // snapshot so the editor is always usable even before/without a live fetch.
+  const roofEditorInitialSegments: RoofSegment[] = useMemo(() => {
+    if (liveSegments && liveSegments.length > 0) return liveSegments;
+    const rf = lead.publicPreview.roofFacts;
+    return [
+      {
+        pitchDegrees: rf.pitchDeg ?? 20,
+        azimuthDegrees: rf.azimuth ?? 180,
+        areaMeters2: rf.totalAreaM2 ?? 30,
+        annualSunshineHours: 1200,
+      },
+    ];
+  }, [liveSegments, lead]);
 
   const acceptLead = async () => {
     setBusy("accept");
@@ -1149,6 +1277,25 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                     {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
                   </span>
                 )}
+                {recalcNotice ? (
+                  <span
+                    className={
+                      recalcNotice === "Updated" ? "text-[#62E6A7] normal-case" : "text-[#F2B84B] normal-case"
+                    }
+                  >
+                    {recalcNotice}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={recalculate}
+                  disabled={recalcBusy}
+                  title="Re-measure the roof and refresh the numbers shown here and on the lead list card"
+                  className="flex items-center gap-1 rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-[#9BA3AF] transition-colors hover:border-[#3DAEFF]/50 hover:text-[#F7F8FA] disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw size={11} className={recalcBusy ? "animate-spin" : undefined} />
+                  Recalculate
+                </button>
               </div>
             </div>
 
@@ -1442,6 +1589,20 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           <ElectricalDesignPanel
             sizing={liveSizing ?? lead.publicPreview.sizing}
             intake={intakeFromLead(lead)}
+          />
+
+          {/* Manual roof-structure editor — parameter form (pitch / azimuth /
+              area per segment), NOT a drag/gizmo editor. Lets the installer
+              correct the AI-measured roof when the satellite read looks off;
+              re-runs the sizer live and writes back via sync-preview. Keyed by
+              lead.id so its internal edit state resets when the installer
+              switches leads. */}
+          <RoofStructureEditor
+            key={`${lead.id}-${liveSegments ? "live" : "seed"}`}
+            lead={lead}
+            intake={intakeFromLead(lead)}
+            initialSegments={roofEditorInitialSegments}
+            onLeadChange={onLeadChange}
           />
 
           {/* Permit-ready single-line diagram — deterministic electrical

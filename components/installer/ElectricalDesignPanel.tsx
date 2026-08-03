@@ -30,6 +30,9 @@ interface Tile {
   label: string;
   value: string;
   hint?: string;
+  /** One-sentence plain-language explanation of what this metric means in
+   *  practical terms — distinct from `hint`. */
+  caption?: string;
 }
 
 function fmt(n: number, digits = 1): string {
@@ -69,11 +72,17 @@ export function ElectricalDesignPanel({ sizing, intake }: Props) {
     tiles.push({
       label: "Modules per string",
       value: String(residential.modulesPerString),
+      caption: "How many panels are wired in series in each chain to the inverter.",
     });
-    tiles.push({ label: "String count", value: String(residential.stringCount) });
+    tiles.push({
+      label: "String count",
+      value: String(residential.stringCount),
+      caption: "How many separate panel chains this system needs.",
+    });
     tiles.push({
       label: "String Voc (cold)",
       value: `${fmt(residential.stringVocCold)} V`,
+      caption: "Highest voltage a string can reach on a cold, sunny morning.",
     });
     tiles.push({
       label: "MPPT window",
@@ -81,6 +90,7 @@ export function ElectricalDesignPanel({ sizing, intake }: Props) {
       hint: residential.withinMpptWindow
         ? "Within inverter DC window"
         : "Re-check module/inverter pairing",
+      caption: "Whether that peak voltage stays inside the inverter's safe operating range.",
     });
   }
 
@@ -88,11 +98,13 @@ export function ElectricalDesignPanel({ sizing, intake }: Props) {
     label: "Recommended wire gauge",
     value: `${wireGauge.wireSizeMm2} mm²`,
     hint: `Est. ${PLACEHOLDER_RUN_LENGTH_M} m one-way DC run`,
+    caption: "Cable thickness needed to carry the DC current safely over this run.",
   });
   tiles.push({
     label: "Voltage drop",
     value: `${fmt(wireGauge.dropPercent, 2)}%`,
     hint: "At recommended gauge",
+    caption: "Energy lost to cable resistance between the panels and the inverter.",
   });
 
   return (
@@ -119,6 +131,9 @@ export function ElectricalDesignPanel({ sizing, intake }: Props) {
             </div>
             {tile.hint ? (
               <div className="mt-0.5 text-[9px] text-[#5B6470]">{tile.hint}</div>
+            ) : null}
+            {tile.caption ? (
+              <div className="mt-1 text-[9px] leading-snug text-[#5B6470]">{tile.caption}</div>
             ) : null}
           </div>
         ))}

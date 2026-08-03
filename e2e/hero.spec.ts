@@ -14,7 +14,7 @@ test("hero loads with all locked elements", async ({ page }) => {
   await page.goto("/");
 
   // Wordmark
-  await expect(page.getByText("Verdict", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("HelioSense AI", { exact: true }).first()).toBeVisible();
 
   // For-installers nav link
   await expect(page.getByRole("link", { name: "For installers" })).toBeVisible();

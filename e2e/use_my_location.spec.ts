@@ -45,7 +45,7 @@ test("Use my location button works", async () => {
   const layerVisible = await layerSwitcher.isVisible().catch(() => false);
   console.log(`[layer-switcher visible after click] ${layerVisible}`);
 
-  await page.screenshot({ path: "/tmp/verdict_use_location_test.png", fullPage: false });
+  await page.screenshot({ path: "/tmp/heliosense_use_location_test.png", fullPage: false });
 
   console.log(`\n=== ALL CONSOLE LOGS ===`);
   for (const l of logs) console.log(l);

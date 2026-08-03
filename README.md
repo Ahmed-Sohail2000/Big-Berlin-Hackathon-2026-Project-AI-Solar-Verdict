@@ -59,6 +59,10 @@ pnpm prebake:heatmaps # JSON -> PNG solar heatmaps
 
 ## Authors
 
-- Ahmed Sohail — ahmed.sohail@code.berlin
+- Ahmed Sohail — ahmedsohail02000@gmail.com
 - Robin Kryszak — r.kryszak@icloud.com
 - George Nikabadze — george.nikabadze@code.berlin
+
+## License
+
+Proprietary — All Rights Reserved. See [`LICENSE`](./LICENSE). "HelioSense AI" and its logo are trademarks of the authors; no license to use the name or branding is granted by this repository.

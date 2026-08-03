@@ -32,7 +32,7 @@ If `STATUS.md` says a sprint is in progress, work on that. Don't go back to refa
 ## File tree (where code lives)
 
 ```
-verdict/
+heliosense-ai/
 ├── app/                              # Next.js 15 App Router routes
 │   ├── layout.tsx                    # Root layout, Inter font, dark theme
 │   ├── page.tsx                      # Homeowner landing (renders <HomeShell />)

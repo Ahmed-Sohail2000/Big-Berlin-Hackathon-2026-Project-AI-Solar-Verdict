@@ -1,4 +1,6 @@
-# Verdict Frontend Audit - Sun Layer / Panels / Pitch
+# HelioSense AI Frontend Audit - Sun Layer / Panels / Pitch
+
+> (Project renamed from Verdict to HelioSense AI on 2026-08-03. This audit predates the rename; findings below are preserved as-written.)
 
 ## Audit Findings
 

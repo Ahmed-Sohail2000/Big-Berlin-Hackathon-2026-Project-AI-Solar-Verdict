@@ -7,7 +7,7 @@ import { tryParseCoords } from "@/lib/parse-coords";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { VoiceMemoRecorder, type VoiceMemo } from "./VoiceMemoRecorder";
 
-const VOICE_MEMO_STORAGE_KEY = "verdict.pendingVoiceMemo";
+const VOICE_MEMO_STORAGE_KEY = "heliosense.pendingVoiceMemo";
 
 type BillPeriod = "month" | "year";
 

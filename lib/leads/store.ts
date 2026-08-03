@@ -35,6 +35,8 @@ export type LeadPublicPreview = {
     segmentsCount?: number;
   };
   sizing: SizingResult;
+  /** Optional live-edited roof segments, synced from the installer detail view. */
+  roofSegments?: SizingResult["roofSegments"];
   bomVariants: Variant[];
   preferences: {
     goal: "lower_bill" | "independent";
@@ -151,11 +153,11 @@ export type CreateLeadInput = {
 };
 
 type StoreGlobal = {
-  __VERDICT_LEAD_STORE__?: Map<string, LeadRecord>;
+  __HELIOSENSE_LEAD_STORE__?: Map<string, LeadRecord>;
 };
 
-const STORE: Map<string, LeadRecord> = (globalThis as StoreGlobal).__VERDICT_LEAD_STORE__ ??
-  ((globalThis as StoreGlobal).__VERDICT_LEAD_STORE__ = new Map());
+const STORE: Map<string, LeadRecord> = (globalThis as StoreGlobal).__HELIOSENSE_LEAD_STORE__ ??
+  ((globalThis as StoreGlobal).__HELIOSENSE_LEAD_STORE__ = new Map());
 
 function normalizeGoal(goal: CreateLeadInput["goal"]): Goal {
   if (goal === "lower_bill") return "lower_bill";
@@ -392,6 +394,45 @@ export function sendOffer(
     installerLogoEmoji: existing.installerLogoEmoji ?? "☀",
     approvedAt: sentAt,
     finalBom: bomLinesFromBom(patch.bom),
+  };
+  STORE.set(id, updated);
+  return updated;
+}
+
+/**
+ * Sync live/edited roof facts, panel count, and roof segments back into a
+ * lead's stored public preview, so the marketplace list and detail view
+ * agree on the same numbers instead of the list showing a stale
+ * creation-time snapshot. Merges roofFacts shallowly (only overwrites keys
+ * present in the patch); leaves other sizing/preview fields untouched.
+ */
+export function updateLeadPreview(
+  id: string,
+  patch: {
+    roofFacts?: Partial<LeadPublicPreview["roofFacts"]>;
+    panelCount?: number;
+    roofSegments?: SizingResult["roofSegments"];
+  },
+): LeadRecord | null {
+  const existing = STORE.get(id);
+  if (!existing) return null;
+  const updated: LeadRecord = {
+    ...existing,
+    publicPreview: {
+      ...existing.publicPreview,
+      roofFacts: {
+        ...existing.publicPreview.roofFacts,
+        ...patch.roofFacts,
+      },
+      sizing:
+        patch.panelCount !== undefined
+          ? {
+              ...existing.publicPreview.sizing,
+              panelCount: patch.panelCount,
+            }
+          : existing.publicPreview.sizing,
+      roofSegments: patch.roofSegments ?? existing.publicPreview.roofSegments,
+    },
   };
   STORE.set(id, updated);
   return updated;

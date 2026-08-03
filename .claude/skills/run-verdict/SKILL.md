@@ -1,9 +1,9 @@
 ---
 name: run-verdict
-description: run, start, build, test, screenshot the verdict web app
+description: run, start, build, test, screenshot the HelioSense AI web app
 ---
 
-The `verdict` app is a Next.js web application. It is driven programmatically using Playwright via a smoke test script.
+The HelioSense AI app is a Next.js web application. It is driven programmatically using Playwright via a smoke test script.
 
 ## Prerequisites
 

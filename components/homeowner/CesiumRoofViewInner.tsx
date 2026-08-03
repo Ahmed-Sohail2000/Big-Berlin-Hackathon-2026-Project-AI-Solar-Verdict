@@ -627,7 +627,7 @@ export default function CesiumRoofViewInner({ coords, address, onViewerReady }: 
           viewer.scene.logarithmicDepthBuffer = true;
         }
         // Pure black so the clipped building reads as an isolated GLB-style
-        // object. The dark-but-tinted Verdict bg leaks colour around the mesh
+        // object. The dark-but-tinted HelioSense AI bg leaks colour around the mesh
         // edges — the GLB references the user loves are all on true black.
         viewer.scene.backgroundColor = Cesium.Color.BLACK;
         // The default sky gradient looks blue/cloudy; kill everything that

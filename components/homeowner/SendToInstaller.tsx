@@ -57,13 +57,13 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
     // tab between submissions.
     let voiceNote: { audioDataUrl: string; transcript?: string; durationMs?: number } | undefined;
     try {
-      const raw = window.sessionStorage.getItem("verdict.pendingVoiceMemo");
+      const raw = window.sessionStorage.getItem("heliosense.pendingVoiceMemo");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.audioDataUrl === "string") {
           voiceNote = parsed;
         }
-        window.sessionStorage.removeItem("verdict.pendingVoiceMemo");
+        window.sessionStorage.removeItem("heliosense.pendingVoiceMemo");
       }
     } catch {
       // ignore — sessionStorage absent or quota issues
@@ -100,7 +100,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
         throw new Error(`Lead POST failed with status ${res.status}`);
       }
 
-      window.localStorage.setItem("verdict.lastLeadId", nextLeadId);
+      window.localStorage.setItem("heliosense.lastLeadId", nextLeadId);
       setLeadId(nextLeadId);
       setState("sent");
     } catch (err) {

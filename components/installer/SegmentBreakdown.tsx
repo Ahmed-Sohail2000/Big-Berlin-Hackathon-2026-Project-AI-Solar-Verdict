@@ -180,6 +180,13 @@ export function SegmentBreakdown({
           </table>
         </div>
       )}
+      {!allSkipped ? (
+        <p className="mt-3 text-[11px] leading-snug text-[#5B6470]">
+          Each row is one roof face — String groups the panels on it into the chain feeding
+          one inverter input; toggle a face Off to exclude it (e.g. a weak north wing) from
+          the count and pricing above.
+        </p>
+      ) : null}
     </section>
   );
 }

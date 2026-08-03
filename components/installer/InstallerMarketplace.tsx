@@ -11,7 +11,7 @@ interface Props {
   mapsApiKey?: string;
 }
 
-const EXACT_VIEW_STORAGE_KEY = "verdict.installer.exactView";
+const EXACT_VIEW_STORAGE_KEY = "heliosense.installer.exactView";
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

@@ -3,7 +3,7 @@ name: open-pr
 description: run the full test suite, commit/push, and open a pull request with a proper title and description for this repo
 ---
 
-Run this whenever asked to "make a PR", "open a pull request", or "ship this branch" for Verdict. It runs the tests correctly for this repo (the e2e gotcha below is easy to get wrong), then creates the PR against the user's own fork — never `upstream` — falling back to a browser link if `gh` isn't set up.
+Run this whenever asked to "make a PR", "open a pull request", or "ship this branch" for HelioSense AI. It runs the tests correctly for this repo (the e2e gotcha below is easy to get wrong), then creates the PR against the user's own fork — never `upstream` — falling back to a browser link if `gh` isn't set up.
 
 ## 1. Run the tests
 
