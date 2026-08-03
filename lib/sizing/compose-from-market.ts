@@ -226,6 +226,13 @@ function calcPanelFitMax(segments: RoofSegment[]): number {
   return segments.filter(isUsableSegment).reduce((sum, s) => sum + segmentCapacity(s), 0);
 }
 
+// Exported so UI-side manual panel-count overrides (e.g. RoofStructureEditor)
+// can clamp against the same physical-fit ceiling the sizer itself uses,
+// instead of duplicating the packing-density math.
+export function panelFitMaxForSegments(segments: RoofSegment[]): number {
+  return calcPanelFitMax(segments);
+}
+
 interface UsableRow {
   index: number;
   capacity: number;
