@@ -9,7 +9,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: process.env.BASE_URL ?? "https://verdict-gamma-ten.vercel.app",
+    baseURL: process.env.BASE_URL ?? "https://ai-solar-verdict.vercel.app",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
