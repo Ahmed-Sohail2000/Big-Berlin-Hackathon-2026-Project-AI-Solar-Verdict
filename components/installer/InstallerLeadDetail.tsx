@@ -26,6 +26,7 @@ import type {
   Intake,
   RoofSegment,
   RoofType,
+  SizingResult,
   Strategy,
   Variant,
 } from "@/lib/contracts";
@@ -40,6 +41,10 @@ import {
   type SizingResultWithMarket,
   type VariantSourceUrls,
 } from "@/lib/sizing/compose-from-market";
+import {
+  commercialEngineeringApplies,
+  computeCommercialEngineering,
+} from "@/lib/sizing/commercial-policy";
 import { CesiumRoofView } from "@/components/homeowner/CesiumRoofView";
 import { SyntheticRoof3D } from "@/components/homeowner/SyntheticRoof3D";
 import {
@@ -254,6 +259,15 @@ function intakeFromLead(lead: LeadRecord): Intake {
     gridType: prefs.gridType,
     heating: prefs.heating as Intake["heating"],
     goal,
+    // Forwarded so commercial-policy.ts's commercialEngineeringApplies()/
+    // computeCommercialEngineering() see the same buildingType/roofType the
+    // lead was created with — without these, every intake built from a lead
+    // reads as residential and the commercial engineering block never
+    // recomputes (it silently falls back to the frozen creation-time
+    // snapshot instead).
+    buildingType: prefs.buildingType,
+    roofType: prefs.roofType,
+    country: prefs.country,
   };
 }
 
@@ -312,6 +326,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   // by the MAIN SyntheticRoof3D instance so there is exactly one 3D view.
   const [roofEditorOpen, setRoofEditorOpen] = useState(false);
   const [roofEditPreview, setRoofEditPreview] = useState<RoofEditPreview | null>(null);
+  // Panel count from the most recent "Apply structure" in the roof-structure
+  // editor. Overrides sizerPanelCount immediately (no fetch round-trip
+  // needed) so Design/BoM/Proposal/Electrical all reflect the new count as
+  // soon as the installer applies an edit. Reset on lead-identity change.
+  const [structurePanelOverride, setStructurePanelOverride] = useState<number | null>(null);
   // The 3D fills the dashboard; the proposal (stepper + BoM + financials +
   // engineering + actions) lives in a right slide-over the installer can
   // collapse to inspect the roof full-screen.
@@ -476,6 +495,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setActiveStep("design");
     setRoofEditorOpen(false);
     setRoofEditPreview(null);
+    setStructurePanelOverride(null);
     setHeatmapMeta(null);
     setHeatmapSampler(null);
     setHeatmapStatus("loading");
@@ -695,7 +715,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   // native panel count. Switching Best Margin → Best LTV changes this, which
   // flows into the 3D top-slice, the active count, and the financials so all
   // three views stay consistent with the picked option.
-  const sizerPanelCount = selectedBaseVariant.bom.panels.count;
+  const sizerPanelCount = structurePanelOverride ?? selectedBaseVariant.bom.panels.count;
 
   const panelYieldKwh = useCallback(
     (panel: SolarPanelEntry): number => {
@@ -788,6 +808,20 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   );
   const yieldScale = totalSlicedYieldKwh > 0 ? activeYieldKwh / totalSlicedYieldKwh : 1;
 
+  // Fires when the roof-structure editor's "Apply structure" succeeds. Folds
+  // the new panel count + segments into local state immediately (no fetch
+  // round-trip) so the Design/BoM/Proposal/Electrical steps all reflect the
+  // edit right away, matching what the editor already persisted server-side.
+  const handleStructureApplied = useCallback(
+    (result: { panelCount: number; segments: RoofSegment[]; totalAreaM2: number }) => {
+      setStructurePanelOverride(result.panelCount);
+      setLiveSegments(result.segments);
+      setLiveTotalAreaM2(result.totalAreaM2);
+      setLivePitchDeg(median(result.segments.map((s) => s.pitchDegrees)));
+    },
+    [],
+  );
+
   // Reconcile the selection if a lead swap left a stale id.
   useEffect(() => {
     if (!baseVariants.find((v) => v.id === selectedVariantId)) {
@@ -864,8 +898,36 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   // Engineering parameters: prefer the freshly-recomputed live sizing, fall
   // back to the sizing snapshot stored on the lead. Absent on residential /
   // pitched results — the panel is simply not rendered in that case.
-  const engineering =
-    liveSizing?.engineering ?? lead.publicPreview.sizing.engineering ?? null;
+  // Recomputed from whatever segments/panel-count are CURRENTLY active so a
+  // roof-structure edit (liveSegments) or a panel add/remove/shift
+  // (activePanelCount) both flow straight into the Electrical step without
+  // waiting on a fresh /api/roof-facts fetch.
+  const engineering = useMemo(() => {
+    const segments = liveSegments ?? lead.publicPreview.sizing.roofSegments ?? [];
+    const intake = intakeFromLead(lead);
+    if (!commercialEngineeringApplies(intake)) {
+      return liveSizing?.engineering ?? lead.publicPreview.sizing.engineering ?? null;
+    }
+    const baseSizing: SizingResult = liveSizing ?? lead.publicPreview.sizing;
+    const synthetic: SizingResult = {
+      ...baseSizing,
+      panelCount: activePanelCount,
+      roofSegments: segments,
+      systemKwp: Math.round(activePanelCount * PANEL_KWP * 10) / 10,
+    };
+    const eng = computeCommercialEngineering(synthetic, intake);
+    const result: NonNullable<SizingResult["engineering"]> = {
+      tiltDegrees: eng.tiltDegrees,
+      dcAcRatio: eng.dcAcRatio,
+      specificYieldKwhPerKwp: eng.specificYieldKwhPerKwp,
+      performanceRatio: eng.performanceRatio,
+      modulesPerString: eng.modulesPerString,
+      stringCount: eng.stringCount,
+    };
+    if (eng.groundCoverageRatio !== undefined) result.groundCoverageRatio = eng.groundCoverageRatio;
+    if (eng.rowSpacingMeters !== undefined) result.rowSpacingMeters = eng.rowSpacingMeters;
+    return result;
+  }, [liveSegments, liveSizing, activePanelCount, lead]);
 
   // In MOCK_MODE there are no Google keys / 3D-tile coverage, so the photoreal
   // Cesium view can't load (it 403s/404s against tile.googleapis.com). Show the
@@ -1167,6 +1229,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
               initialSegments={roofEditorInitialSegments}
               onLeadChange={onLeadChange}
               onPreviewChange={setRoofEditPreview}
+              onApplied={handleStructureApplied}
               onClose={() => setRoofEditorOpen(false)}
             />
           </div>

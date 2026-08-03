@@ -35,6 +35,10 @@ interface Props {
   }) => void;
   /** Closes the overlay panel (parent owns the open/closed state). */
   onClose?: () => void;
+  /** Fires once a structure edit is successfully applied (persisted via
+   *  sync-preview), so the parent can immediately fold the new panel count
+   *  and segments into its own local state without waiting on a re-fetch. */
+  onApplied?: (result: { panelCount: number; segments: RoofSegment[]; totalAreaM2: number }) => void;
 }
 
 interface RecomputedSizing {
@@ -87,6 +91,7 @@ export function RoofStructureEditor({
   onLeadChange,
   onPreviewChange,
   onClose,
+  onApplied,
 }: Props) {
   const [rows, setRows] = useState<Array<RoofSegment & { key: number }>>(() =>
     initialSegments.map((s) => ({ ...s, key: nextSegmentKey++ })),
@@ -175,6 +180,7 @@ export function RoofStructureEditor({
         return;
       }
       onLeadChange(data.lead);
+      onApplied?.({ panelCount: computed.panelCount, segments, totalAreaM2 });
       setNotice("Applied to lead.");
     } catch {
       setNotice("Apply failed -- try again.");
