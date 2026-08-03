@@ -88,8 +88,8 @@ export function InstallerReview() {
         </div>
         <h2 className="text-2xl font-semibold">Approved &middot; homeowner notified</h2>
         <p className="text-sm text-[#9BA3AF] max-w-md">
-          {v.customerName} just got a push notification with the final BoM. Verdict link:{" "}
-          <code className="text-[#3DAEFF]">verdict.app/v/{v.id}</code>
+          {v.customerName} just got a push notification with the final BoM. HelioSense AI link:{" "}
+          <code className="text-[#3DAEFF]">heliosense.app/v/{v.id}</code>
         </p>
         <button
           type="button"
@@ -107,7 +107,7 @@ export function InstallerReview() {
       {/* Lead header */}
       <div className="flex items-baseline justify-between">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-wider text-[#9BA3AF]">Verdict pre-qualified lead</span>
+          <span className="text-xs uppercase tracking-wider text-[#9BA3AF]">HelioSense AI pre-qualified lead</span>
           <h2 className="text-2xl font-semibold mt-1">{v.customerName} <span className="text-[#9BA3AF] font-normal">· {v.city}</span></h2>
         </div>
         <span className="text-2xl font-semibold tabular-nums">€{v.totalEur.toLocaleString()}</span>
@@ -146,7 +146,7 @@ export function InstallerReview() {
 
       {/* Cited projects */}
       <div className="flex flex-col gap-2">
-        <span className="text-xs uppercase tracking-wider text-[#9BA3AF]">Cited Reonic projects</span>
+        <span className="text-xs uppercase tracking-wider text-[#9BA3AF]">Comparable projects</span>
         <div className="flex gap-2">
           {v.citedProjectIds.map((pid) => (
             <span

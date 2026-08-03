@@ -3,15 +3,19 @@
 import { useState } from "react";
 import type { Variant } from "@/lib/contracts";
 import { Star, Check } from "lucide-react";
+import { CURRENCIES, CURRENCY_CODES, formatMoney, type CurrencyCode } from "@/lib/currency";
 
 interface Props {
   variants: [Variant, Variant, Variant];   // [margin, closeRate, ltv]
   onSelect?: (variantId: string) => void;
+  /** Initial display currency (auto-picked from the country; user can switch). */
+  defaultCurrency?: CurrencyCode;
 }
 
-export function VariantCardStack({ variants, onSelect }: Props) {
+export function VariantCardStack({ variants, onSelect, defaultCurrency = "EUR" }: Props) {
   const [selectedId, setSelectedId] = useState<string>(variants[1].id); // Best Close Rate ★ default
   const [expanded, setExpanded] = useState<string | null>(variants[1].id);
+  const [currency, setCurrency] = useState<CurrencyCode>(defaultCurrency);
 
   const select = (id: string) => {
     setSelectedId(id);
@@ -21,6 +25,27 @@ export function VariantCardStack({ variants, onSelect }: Props) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Currency switcher — display only; the underlying math is EUR-based. */}
+      <div className="flex items-center justify-end gap-1">
+        <span className="mr-1 text-[10px] uppercase tracking-wider text-[#5B6470]">Currency</span>
+        <div role="radiogroup" aria-label="Currency" className="flex rounded-lg border border-[#2A3038] overflow-hidden">
+          {CURRENCY_CODES.map((code) => (
+            <button
+              key={code}
+              type="button"
+              role="radio"
+              aria-checked={currency === code}
+              onClick={() => setCurrency(code)}
+              className={`px-2.5 py-1 text-[11px] transition-colors ${
+                currency === code ? "bg-[#3DAEFF] text-[#0A0E1A]" : "text-[#9BA3AF] hover:text-[#F7F8FA]"
+              }`}
+            >
+              {CURRENCIES[code].code}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {variants.map((v) => {
         const isSelected = selectedId === v.id;
         const isExpanded = expanded === v.id;
@@ -64,7 +89,7 @@ export function VariantCardStack({ variants, onSelect }: Props) {
             {/* Big saving number */}
             <div className="px-5 pb-2">
               <div className="text-3xl sm:text-4xl font-semibold tabular-nums">
-                €{v.monthlySavingsEur.toLocaleString()}
+                {formatMoney(v.monthlySavingsEur, currency)}
                 <span className="text-base text-[#9BA3AF] font-normal"> / month saved</span>
               </div>
             </div>
@@ -81,7 +106,7 @@ export function VariantCardStack({ variants, onSelect }: Props) {
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Total</div>
-                <div className="text-sm tabular-nums">€{v.bom.totalEur.toLocaleString()}</div>
+                <div className="text-sm tabular-nums">{formatMoney(v.bom.totalEur, currency)}</div>
               </div>
             </div>
 
@@ -123,32 +148,6 @@ export function VariantCardStack({ variants, onSelect }: Props) {
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-[#5B6470] mb-1">Why this wins</div>
                   <div className="text-xs text-[#9BA3AF] leading-relaxed">{v.objection}</div>
-                </div>
-
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-[#5B6470] mb-1.5">Cited Reonic projects</div>
-                  <div className="flex gap-2">
-                    {v.citedProjectIds.map((pid) => (
-                      <span key={pid} className="rounded border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 text-[11px] text-[#9BA3AF]">
-                        #{pid.replace("P-", "")}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-1 grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Margin</div>
-                    <div className="text-sm tabular-nums">{v.marginPct}%</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Win rate</div>
-                    <div className="text-sm tabular-nums">{v.winRatePct}%</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[#5B6470]">Confidence</div>
-                    <div className="text-sm tabular-nums">{Math.round(v.confidence * 100)}%</div>
-                  </div>
                 </div>
               </div>
             )}

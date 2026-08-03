@@ -1,0 +1,34 @@
+{
+  "name": "buildings/ChIJ_______reichstag",
+  "center": { "latitude": 52.5186, "longitude": 13.3761 },
+  "imageryDate": { "year": 2022, "month": 7, "day": 14 },
+  "imageryQuality": "HIGH",
+  "postalCode": "10557",
+  "administrativeArea": "Berlin",
+  "regionCode": "DE",
+  "solarPotential": {
+    "maxArrayPanelsCount": 417,
+    "maxArrayAreaMeters2": 818,
+    "maxSunshineHoursPerYear": 1185,
+    "carbonOffsetFactorKgPerMwh": 401,
+    "panelCapacityWatts": 400,
+    "panelHeightMeters": 1.879,
+    "panelWidthMeters": 1.045,
+    "panelLifetimeYears": 20,
+    "wholeRoofStats": { "areaMeters2": 818 },
+    "roofSegmentStats": [
+      {
+        "pitchDegrees": 7.2,
+        "azimuthDegrees": 178,
+        "stats": { "areaMeters2": 412, "sunshineQuantiles": [400, 800, 1100, 1140, 1160, 1185] },
+        "center": { "latitude": 52.5186, "longitude": 13.3761 }
+      },
+      {
+        "pitchDegrees": 7.4,
+        "azimuthDegrees": 358,
+        "stats": { "areaMeters2": 406, "sunshineQuantiles": [380, 770, 1080, 1120, 1150, 1170] },
+        "center": { "latitude": 52.5187, "longitude": 13.3762 }
+      }
+    ]
+  }
+}

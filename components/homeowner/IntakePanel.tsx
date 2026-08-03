@@ -1,19 +1,70 @@
 "use client";
 
 import { useState } from "react";
-import type { Preference } from "@/lib/contracts";
+import type { BuildingType, GridType, Preference, RoofType } from "@/lib/contracts";
+import { currencyForCountry, CURRENCIES } from "@/lib/currency";
 import { tryParseCoords } from "@/lib/parse-coords";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { VoiceMemoRecorder, type VoiceMemo } from "./VoiceMemoRecorder";
 
-const VOICE_MEMO_STORAGE_KEY = "verdict.pendingVoiceMemo";
+const VOICE_MEMO_STORAGE_KEY = "heliosense.pendingVoiceMemo";
 
-type ConsumptionMode = "kwh" | "bill";
+type BillPeriod = "month" | "year";
 
 const PREF_OPTIONS: { value: Preference; label: string }[] = [
   { value: "yes", label: "Yes" },
   { value: "no", label: "No" },
   { value: "idk", label: "Not sure" },
+];
+
+const BUILDING_OPTIONS: { value: BuildingType; label: string; hint: string }[] = [
+  { value: "office", label: "Office", hint: "Workplaces and mixed commercial floors." },
+  { value: "retail", label: "Retail", hint: "Shops, showrooms, and supermarkets." },
+  { value: "warehouse", label: "Warehouse", hint: "Logistics and distribution roofs." },
+  { value: "industrial", label: "Industrial", hint: "Manufacturing and processing plants." },
+  { value: "agricultural", label: "Agricultural", hint: "Barns, sheds, and farm buildings." },
+  { value: "residential", label: "Residential", hint: "Homes and small multi-unit roofs." },
+];
+
+// ISO-3166 alpha-2 for the tariff/market context. "other" ships as free text so
+// the sizer's country-aware market lookup can fall back to a sane default.
+const COUNTRY_OPTIONS: { value: string; label: string }[] = [
+  { value: "DE", label: "Germany" },
+  { value: "GB", label: "United Kingdom" },
+  { value: "FR", label: "France" },
+  { value: "ES", label: "Spain" },
+  { value: "IT", label: "Italy" },
+  { value: "NL", label: "Netherlands" },
+  { value: "PL", label: "Poland" },
+  { value: "US", label: "United States" },
+  { value: "AE", label: "United Arab Emirates" },
+  { value: "AU", label: "Australia" },
+  { value: "other", label: "Other / not listed" },
+];
+
+const ROOF_OPTIONS: { value: RoofType; label: string }[] = [
+  { value: "flat", label: "Flat" },
+  { value: "pitched", label: "Pitched" },
+];
+
+const GRID_OPTIONS: { value: GridType; title: string; description: string }[] = [
+  {
+    value: "on_grid",
+    title: "Grid-tied (recommended)",
+    description:
+      "Connected to the public grid — export surplus and draw when needed. The standard commercial setup.",
+  },
+  {
+    value: "hybrid",
+    title: "Hybrid",
+    description:
+      "Grid-tied with battery storage — peak shaving on demand charges and backup during outages.",
+  },
+  {
+    value: "off_grid",
+    title: "Off-grid",
+    description: "Fully islanded — needs large storage. For remote sites without a grid connection.",
+  },
 ];
 
 interface Props {
@@ -22,9 +73,15 @@ interface Props {
 
 export function IntakePanel({ onLocate }: Props = {}) {
   const [address, setAddress] = useState("");
-  const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>("bill");
+  const [buildingType, setBuildingType] = useState<BuildingType>("office");
+  const [country, setCountry] = useState<string>("DE");
+  const [roofType, setRoofType] = useState<RoofType>("flat");
+  const [billPeriod, setBillPeriod] = useState<BillPeriod>("month");
+  const [billValue, setBillValue] = useState<string>("");
   const [annualKwh, setAnnualKwh] = useState<string>("");
-  const [annualBill, setMonthlyBill] = useState<string>("");
+  const [peakDemandKw, setPeakDemandKw] = useState<string>("");
+  const [priceEurKwh, setPriceEurKwh] = useState<string>("");
+  const [gridType, setGridType] = useState<GridType>("on_grid");
   const [wantsBattery, setWantsBattery] = useState<Preference>("idk");
   const [wantsHeatPump, setWantsHeatPump] = useState<Preference>("idk");
   const [evPref, setEvPref] = useState<Preference>("idk");
@@ -49,6 +106,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
           const data = await res.json();
           if (data.address) {
             setAddress(data.address);
+            applyDetected(data);
             onLocate?.({ lat: data.lat, lng: data.lng }, data.address);
           } else {
             setLocationError(data.error ?? "Couldn't find an address near you.");
@@ -71,6 +129,23 @@ export function IntakePanel({ onLocate }: Props = {}) {
     );
   };
 
+  // Auto-detect: when the geocoder classifies the building (mock mode returns
+  // it directly; real geocoding can derive it from OSM tags later), preselect
+  // the building type + roof type. The user can still override via the cards.
+  const applyDetected = (data: { buildingType?: string; roofType?: string; country?: string }) => {
+    if (data.buildingType && BUILDING_OPTIONS.some((o) => o.value === data.buildingType)) {
+      setBuildingType(data.buildingType as BuildingType);
+    }
+    if (data.roofType === "flat" || data.roofType === "pitched") {
+      setRoofType(data.roofType);
+    }
+    // Country auto-selects from the address → drives the market tariff + the
+    // display currency on the quote.
+    if (data.country && COUNTRY_OPTIONS.some((o) => o.value === data.country)) {
+      setCountry(data.country);
+    }
+  };
+
   const forwardGeocode = async (q: string) => {
     if (q.trim().length < 4) return;
 
@@ -86,6 +161,7 @@ export function IntakePanel({ onLocate }: Props = {}) {
       const res = await fetch(`/api/forward-geocode?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (typeof data.lat === "number" && typeof data.lng === "number") {
+        applyDetected(data);
         onLocate?.({ lat: data.lat, lng: data.lng }, data.address);
       }
     } catch {
@@ -112,38 +188,59 @@ export function IntakePanel({ onLocate }: Props = {}) {
     }
   };
 
-  // Validation: address + at least one consumption value (the active mode's value)
-  const consumptionFilled =
-    consumptionMode === "kwh"
-      ? Number(annualKwh) > 0
-      : Number(annualBill) > 0;
-  const canSubmit = address.trim().length > 0 && consumptionFilled;
-
-  // Both inputs are now per-year. Derive monthly bill (legacy field) by /12 when in bill mode,
-  // or from annualKwh × 0.32 / 12 when in kWh mode.
+  // Validation: address + at least one consumption value (bill, or the optional annual kWh)
+  const billNum = Number(billValue);
+  const kwhNum = Number(annualKwh);
+  const peakNum = Number(peakDemandKw);
+  const priceNum = Number(priceEurKwh);
+  // The bill + price are entered in the country's currency; convert to the EUR
+  // base the sizing math uses. Symbol also labels the inputs.
+  const cur = CURRENCIES[currencyForCountry(country)];
+  const isCommercial = buildingType !== "residential";
+  const canSubmit = address.trim().length > 0 && (billNum > 0 || kwhNum > 0);
 
   const submit = () => {
     if (!canSubmit) return;
     // Internally still set heating + goal (defaults) — lib/contracts.ts requires them.
-    // Translate consumption mode → annualBillEur (always send a numeric bill).
-    // If the user picked kWh, derive a synthetic monthly bill from annualKwh × 0.32 / 12
-    // so the legacy field is populated; the new annualKwh field is also passed through.
+    // The contract field is monthlyBillEur, so the bill input is normalized to a
+    // monthly figure: "per month" passes through as-is, "per year" divides by 12.
+    // If only the optional annual kWh was filled, derive a synthetic monthly bill
+    // from annualKwh × 0.32 €/kWh ÷ 12 so the legacy field stays populated; the
+    // explicit annualKwh is passed through too and takes precedence in sizing.
     const derivedMonthlyBill =
-      consumptionMode === "bill"
-        ? Math.round(Number(annualBill) / 12)
-        : Math.round((Number(annualKwh) * 0.32) / 12);
+      billNum > 0
+        ? billPeriod === "year"
+          ? Math.round(billNum / 12)
+          : Math.round(billNum)
+        : Math.round((kwhNum * 0.32) / 12);
+    // Convert the entered bill from the country's currency to the EUR base the
+    // sizing math uses (e.g. AED 350 → ~€88), so demand + savings are realistic.
+    const billEur = Math.round((derivedMonthlyBill || 120) / cur.perEur) || 120;
     const params = new URLSearchParams({
       address,
-      bill: String(derivedMonthlyBill || 120),
+      bill: String(billEur),
       ev: String(evPref === "yes"),
       heating: "gas",
       goal: "lower_bill",
       evPref,
       wantsBattery,
-      wantsHeatPump,
+      // Heat pump is residential-only in this UI. For commercial building types
+      // we hide the control but keep the contract field populated with a sane
+      // default ("no") so downstream sizing stays deterministic.
+      wantsHeatPump: isCommercial ? "no" : wantsHeatPump,
+      gridType,
+      buildingType,
+      country,
+      roofType,
     });
-    if (consumptionMode === "kwh" && Number(annualKwh) > 0) {
-      params.set("annualKwh", String(Number(annualKwh)));
+    if (kwhNum > 0) {
+      params.set("annualKwh", String(kwhNum));
+    }
+    if (peakNum > 0) {
+      params.set("peakDemandKw", String(peakNum));
+    }
+    if (priceNum > 0) {
+      params.set("price", String(priceNum / cur.perEur));
     }
     // Voice memo (when present) is too big for URL params; stash it in
     // sessionStorage so the /quote page's SendToInstaller picks it up
@@ -168,18 +265,18 @@ export function IntakePanel({ onLocate }: Props = {}) {
     <div className="flex flex-col gap-4">
       {/* Hero copy — compact */}
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl sm:text-2xl lg:text-[26px] font-semibold leading-tight tracking-tight">
-          Your home can earn more than you&rsquo;re losing on energy.
-        </h1>
+        <h2 className="text-xl sm:text-2xl lg:text-[26px] font-semibold leading-tight tracking-tight">
+          Design a solar system for your building in seconds.
+        </h2>
         <p className="text-xs sm:text-sm text-[#9BA3AF]">
-          Based on 1,277 real Reonic projects.
+          Engineered from real satellite roof data &mdash; benchmarked on real installer projects.
         </p>
       </div>
 
       {/* Address */}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="address" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-          Address
+          Enter your building address
         </label>
         <AddressAutocomplete
           id="address"
@@ -215,101 +312,303 @@ export function IntakePanel({ onLocate }: Props = {}) {
         )}
       </div>
 
-      {/* Consumption — toggle between kWh/year OR monthly bill (€) */}
+      {/* Building type — drives commercial-vs-residential sizing defaults */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Building type
+        </span>
+        <div
+          role="radiogroup"
+          aria-label="Building type"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+        >
+          {BUILDING_OPTIONS.map((opt) => {
+            const active = buildingType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setBuildingType(opt.value)}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 ${
+                  active
+                    ? "border-[#3DAEFF] bg-[#3DAEFF]/10 text-[#F7F8FA]"
+                    : "border-[#2A3038] bg-[#12161C] text-[#9BA3AF] hover:border-[#3DAEFF]/40"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          {BUILDING_OPTIONS.find((o) => o.value === buildingType)?.hint}
+        </p>
+      </div>
+
+      {/* ── Section: Your electricity ── */}
+      <div className="mt-1 flex items-center gap-3 border-t border-[#1A1F2A] pt-4">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#3DAEFF]">
+          Your electricity
+        </span>
+        <span className="h-px flex-1 bg-[#1A1F2A]" />
+      </div>
+
+      {/* Electricity bill (€) — guided, with a per month / per year toggle */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
-            Consumption
-          </span>
+          <label htmlFor="bill" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+            Business electricity bill
+          </label>
           <div
             role="radiogroup"
-            aria-label="Consumption input mode"
+            aria-label="Bill period"
             className="flex rounded-lg border border-[#2A3038] overflow-hidden"
           >
             <button
               type="button"
               role="radio"
-              aria-checked={consumptionMode === "bill"}
-              onClick={() => setConsumptionMode("bill")}
+              aria-checked={billPeriod === "month"}
+              onClick={() => setBillPeriod("month")}
               className={`px-3 py-1 text-[11px] transition-colors ${
-                consumptionMode === "bill"
+                billPeriod === "month"
                   ? "bg-[#3DAEFF] text-[#0A0E1A]"
                   : "text-[#9BA3AF] hover:text-[#F7F8FA]"
               }`}
             >
-              € / year
+              per month
             </button>
             <button
               type="button"
               role="radio"
-              aria-checked={consumptionMode === "kwh"}
-              onClick={() => setConsumptionMode("kwh")}
+              aria-checked={billPeriod === "year"}
+              onClick={() => setBillPeriod("year")}
               className={`px-3 py-1 text-[11px] transition-colors ${
-                consumptionMode === "kwh"
+                billPeriod === "year"
                   ? "bg-[#3DAEFF] text-[#0A0E1A]"
                   : "text-[#9BA3AF] hover:text-[#F7F8FA]"
               }`}
             >
-              kWh / year
+              per year
             </button>
           </div>
         </div>
 
-        {consumptionMode === "bill" ? (
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5B6470]">
-              €
-            </span>
-            <input
-              id="bill"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={50}
-              value={annualBill}
-              onChange={(e) => setMonthlyBill(e.target.value)}
-              placeholder="1500"
-              className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] pl-7 pr-16 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
-              / year
-            </span>
-          </div>
-        ) : (
-          <div className="relative">
-            <input
-              id="kwh"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={100}
-              value={annualKwh}
-              onChange={(e) => setAnnualKwh(e.target.value)}
-              placeholder="4500"
-              className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
-              kWh / yr
-            </span>
-          </div>
-        )}
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5B6470]">
+            {cur.symbol}
+          </span>
+          <input
+            id="bill"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={5}
+            value={billValue}
+            onChange={(e) => setBillValue(e.target.value)}
+            placeholder={billPeriod === "month" ? "2500" : "30000"}
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] pl-7 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            / {billPeriod}
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          The total amount your business pays for electricity &mdash; from your utility invoice.
+        </p>
       </div>
 
-      {/* Three preference fields: battery, heat pump, EV */}
+      {/* Optional annual kWh — improves sizing accuracy */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="kwh" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Annual consumption <span className="normal-case text-[#5B6470]">(optional)</span>
+        </label>
+        <div className="relative">
+          <input
+            id="kwh"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={100}
+            value={annualKwh}
+            onChange={(e) => setAnnualKwh(e.target.value)}
+            placeholder="120000"
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            kWh / yr
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          Annual kWh from your utility bill &mdash; sharpens system sizing accuracy.
+        </p>
+      </div>
+
+      {/* Optional electricity price — overrides the market tariff so the savings
+          match the customer's actual bill (works for any country). */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="price" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Electricity price <span className="normal-case text-[#5B6470]">(optional)</span>
+        </label>
+        <div className="relative">
+          <input
+            id="price"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step={0.01}
+            value={priceEurKwh}
+            onChange={(e) => setPriceEurKwh(e.target.value)}
+            placeholder="0.30"
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-20 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            {cur.symbol} / kWh
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          What you pay per kWh &mdash; overrides the market rate so the savings match your bill.
+        </p>
+      </div>
+
+      {/* Optional peak demand — demand-charge-aware sizing */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="peak" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Peak demand <span className="normal-case text-[#5B6470]">(optional, advanced)</span>
+        </label>
+        <div className="relative">
+          <input
+            id="peak"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={5}
+            value={peakDemandKw}
+            onChange={(e) => setPeakDemandKw(e.target.value)}
+            placeholder="150"
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 pr-16 py-2.5 text-sm text-[#F7F8FA] placeholder:text-[#5B6470] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#5B6470]">
+            kW
+          </span>
+        </div>
+        <p className="text-[11px] text-[#5B6470]">
+          The demand-charge (kW) figure on your bill &mdash; lets the AI size for peak-demand reduction.
+        </p>
+      </div>
+
+      {/* ── Section: System configuration ── */}
+      <div className="mt-1 flex items-center gap-3 border-t border-[#1A1F2A] pt-4">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#3DAEFF]">
+          System configuration
+        </span>
+        <span className="h-px flex-1 bg-[#1A1F2A]" />
+      </div>
+
+      {/* Roof type + country — geometry + market context (auto-detected from
+          the address; installer/customer can override). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">Roof type</span>
+          <div
+            role="radiogroup"
+            aria-label="Roof type"
+            className="flex rounded-lg border border-[#2A3038] overflow-hidden"
+          >
+            {ROOF_OPTIONS.map((opt) => {
+              const active = roofType === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setRoofType(opt.value)}
+                  className={`flex-1 px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 focus:relative ${
+                    active
+                      ? "bg-[#3DAEFF] text-[#0A0E1A]"
+                      : "text-[#9BA3AF] hover:text-[#F7F8FA]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="country" className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+            Country
+          </label>
+          <select
+            id="country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            className="w-full rounded-lg border border-[#2A3038] bg-[#12161C] px-3 py-2.5 text-sm text-[#F7F8FA] focus:outline-none focus:border-[#3DAEFF] focus:ring-2 focus:ring-[#3DAEFF]/30 transition-all"
+          >
+            {COUNTRY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Grid connection type */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider text-[#9BA3AF]">
+          Grid connection
+        </span>
+        <div role="radiogroup" aria-label="Grid connection" className="flex flex-col gap-2">
+          {GRID_OPTIONS.map((opt) => {
+            const active = gridType === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setGridType(opt.value)}
+                className={`flex flex-col gap-0.5 rounded-lg border px-4 py-2.5 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[#3DAEFF]/40 ${
+                  active
+                    ? "border-[#3DAEFF] bg-[#3DAEFF]/10"
+                    : "border-[#2A3038] bg-[#12161C] hover:border-[#3DAEFF]/40"
+                }`}
+              >
+                <span className={`text-sm font-medium ${active ? "text-[#F7F8FA]" : "text-[#9BA3AF]"}`}>
+                  {opt.title}
+                </span>
+                <span className="text-[11px] leading-relaxed text-[#5B6470]">
+                  {opt.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Preference fields. Battery + EV reframe to commercial (backup / peak
+          shaving and fleet charging). Heat pump is residential-only — hidden
+          for commercial building types; the contract field is defaulted to
+          "no" at submit so sizing stays deterministic. */}
       <ThreeStateRow
-        label="Battery?"
+        label={isCommercial ? "Battery / backup?" : "Battery?"}
         value={wantsBattery}
         onChange={setWantsBattery}
         groupName="battery"
       />
+      {!isCommercial && (
+        <ThreeStateRow
+          label="Heat pump?"
+          value={wantsHeatPump}
+          onChange={setWantsHeatPump}
+          groupName="heatpump"
+        />
+      )}
       <ThreeStateRow
-        label="Heat pump?"
-        value={wantsHeatPump}
-        onChange={setWantsHeatPump}
-        groupName="heatpump"
-      />
-      <ThreeStateRow
-        label="EV charger?"
+        label={isCommercial ? "Fleet EV charging?" : "EV charger?"}
         value={evPref}
         onChange={setEvPref}
         groupName="ev"
@@ -328,11 +627,11 @@ export function IntakePanel({ onLocate }: Props = {}) {
         disabled={!canSubmit}
         className="mt-2 w-full rounded-lg bg-[#3DAEFF] px-5 py-4 text-base font-semibold text-[#0A0E1A] transition-all hover:bg-[#2EA1F0] disabled:bg-[#1F3A52] disabled:text-[#5B6470] disabled:cursor-not-allowed"
       >
-        See my Verdict →
+        Get my proposal →
       </button>
 
       <p className="text-[11px] text-[#5B6470] text-center">
-        non-binding · no phone call · the installer reviews your Verdict and quotes within 24h
+        non-binding · a certified installer reviews the engineered design before you commit
       </p>
     </div>
   );

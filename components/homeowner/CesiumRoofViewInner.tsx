@@ -627,7 +627,7 @@ export default function CesiumRoofViewInner({ coords, address, onViewerReady }: 
           viewer.scene.logarithmicDepthBuffer = true;
         }
         // Pure black so the clipped building reads as an isolated GLB-style
-        // object. The dark-but-tinted Verdict bg leaks colour around the mesh
+        // object. The dark-but-tinted HelioSense AI bg leaks colour around the mesh
         // edges — the GLB references the user loves are all on true black.
         viewer.scene.backgroundColor = Cesium.Color.BLACK;
         // The default sky gradient looks blue/cloudy; kill everything that
@@ -814,10 +814,32 @@ export default function CesiumRoofViewInner({ coords, address, onViewerReady }: 
         setStatus("ready");
       } catch (err) {
         // Any failure (network, EEA block, missing tiles for this region,
-        // expired session, etc.) drops us into the fallback branch which
-        // renders the existing Google Maps RoofMap3D below.
+        // expired session, key/billing rejection) drops us into the fallback
+        // branch which renders the Google Maps RoofMap3D below.
+        //
+        // Cesium's tile-load errors frequently serialise to "{}" when logged
+        // as an object, which hides the real cause. Extract a readable detail
+        // and name the usual culprit so the console message is actionable.
+        const detail =
+          err instanceof Error
+            ? `${err.name}: ${err.message}`
+            : typeof err === "string"
+              ? err
+              : (() => {
+                  try {
+                    return JSON.stringify(err);
+                  } catch {
+                    return String(err);
+                  }
+                })();
         // eslint-disable-next-line no-console
-        console.error("[CesiumRoofView] failed to initialize", err);
+        console.error(
+          "[CesiumRoofView] Photorealistic 3D Tiles failed to load — falling back to the 2D map. " +
+            "Most likely the Google Cloud project needs the \"Map Tiles API\" enabled AND billing " +
+            "turned on, or the API key's HTTP-referrer / API restrictions are blocking " +
+            "tile.googleapis.com.",
+          detail || "(no detail from Cesium)",
+        );
         if (!cancelled) setStatus("error");
       }
     })();

@@ -2,7 +2,7 @@
  * Google Solar API client (server-side only).
  *
  * Wraps `buildingInsights:findClosest` and `dataLayers:get` with the standard
- * Verdict resilience pattern: 4s timeout, cached fixture fallback, ApiStatus
+ * HelioSense AI resilience pattern: 4s timeout, cached fixture fallback, ApiStatus
  * always populated.
  *
  * Never call from the browser — uses the unrestricted server-only key.
@@ -89,12 +89,21 @@ export async function getBuildingInsights(
   lat: number,
   lng: number,
 ): Promise<SolarApiResult> {
+  if (process.env.MOCK_MODE === 'true') {
+    const cached = await loadFixture("solar", lat, lng);
+    return {
+      data: cached,
+      apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
+    };
+  }
+
   const url =
     `${BUILDING_INSIGHTS_ENDPOINT}?location.latitude=${lat}` +
     `&location.longitude=${lng}` +
     `&key=${encodeURIComponent(getKey())}`;
 
   const controller = new AbortController();
+
   const live = fetchJson(url, controller.signal);
 
   const fallback = async (): Promise<unknown> => {
@@ -145,6 +154,14 @@ export async function getDataLayers(
   lng: number,
   radiusMeters: number = DEFAULT_DATA_LAYERS_RADIUS_METERS,
 ): Promise<SolarApiResult> {
+  if (process.env.MOCK_MODE === 'true') {
+    const cached = await loadFixture("datalayers", lat, lng);
+    return {
+      data: cached,
+      apiStatus: { source: "mock", status: "ok", latencyMs: 0, message: "Mock mode enabled" },
+    };
+  }
+
   const cacheKey = `${latLngKey(lat, lng)}_${radiusMeters}`;
   const cached = dataLayersCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {

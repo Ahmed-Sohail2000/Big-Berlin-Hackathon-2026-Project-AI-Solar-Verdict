@@ -1,6 +1,8 @@
 # Verdict — Sprint Execution Plan
 *24h hackathon · Big Berlin Hack 2026 · Reonic track*
 
+> (Project renamed from Verdict to HelioSense AI on 2026-08-03. This sprint log is preserved as-written for historical accuracy.)
+
 ---
 
 ## Cadence: 6 × 4h sprints (Sat 14:00 → Sun 14:00)

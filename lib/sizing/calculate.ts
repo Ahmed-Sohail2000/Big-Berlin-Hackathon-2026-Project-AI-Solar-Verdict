@@ -16,6 +16,12 @@ import type {
   Variant,
 } from "@/lib/contracts";
 import { recommendBom } from "@/lib/reonic/recommend";
+import { applyGridTypePolicy } from "@/lib/sizing/grid-policy";
+import {
+  applyCommercialEngineering,
+  isCommercialBuilding,
+} from "@/lib/sizing/commercial-policy";
+import { climateProfileFor } from "@/lib/sizing/climate";
 import { enrichVariantRationale } from "@/lib/sizing/rationale";
 
 // ---------------------------------------------------------------------------
@@ -84,6 +90,15 @@ const FEED_IN_EUR_PER_KWH = 0.08;
 
 /** Threshold above which the system warrants a heat pump for non-HP heating. */
 const HP_DEMAND_THRESHOLD_KWH = 8000;
+
+/** Commercial annual full-load hours: rough kWh consumed per kW of peak demand
+ *  per year for a daytime-heavy commercial load (office/retail/warehouse).
+ *  Used ONLY for commercial buildingTypes — the residential path is untouched. */
+const COMMERCIAL_FULL_LOAD_HOURS = 1900;
+
+/** Commercial demand-coverage headroom: size up to 125% of implied consumption
+ *  when a peak demand is provided (commercial self-consumes daytime + exports). */
+const COMMERCIAL_DEMAND_COVERAGE = 1.25;
 
 // ---------------------------------------------------------------------------
 // Rounding helpers
@@ -322,9 +337,42 @@ function deriveAnnualKwh(intake: Intake, eurPerKwhOverride?: number): number {
   if (typeof intake.annualKwh === "number" && intake.annualKwh > 0) {
     return intake.annualKwh;
   }
+  // Commercial branch (guarded — residential path below is byte-identical):
+  // when a peak demand is supplied, estimate annual consumption from a daytime
+  // commercial full-load-hours factor rather than a residential monthly bill.
+  if (
+    isCommercialBuilding(intake.buildingType) &&
+    typeof intake.peakDemandKw === "number" &&
+    intake.peakDemandKw > 0
+  ) {
+    return Math.max(0, intake.peakDemandKw * COMMERCIAL_FULL_LOAD_HOURS);
+  }
   const eurPerKwh = eurPerKwhOverride ?? EUR_PER_KWH_RESIDENTIAL;
   const annual = (intake.monthlyBillEur * 12) / eurPerKwh;
   return Math.max(0, annual);
+}
+
+/**
+ * Commercial panel count (guarded — only ever called for commercial
+ * buildingTypes). Commercial rooftops are sized to generation potential:
+ * high daytime self-consumption plus export make filling the usable roof
+ * economic. When a peak demand is provided we cap at 125% of the implied
+ * annual consumption so we do not oversize past what the site can absorb.
+ */
+function commercialPanelCount(
+  intake: Intake,
+  panelFitMax: number,
+  panelDemand: number,
+): number {
+  if (typeof intake.peakDemandKw === "number" && intake.peakDemandKw > 0) {
+    const annual = intake.peakDemandKw * COMMERCIAL_FULL_LOAD_HOURS;
+    const demandCap = Math.ceil(
+      (annual * COMMERCIAL_DEMAND_COVERAGE) / KWH_PER_PANEL_PER_YEAR_DE,
+    );
+    return Math.max(1, Math.min(panelFitMax, Math.max(demandCap, panelDemand)));
+  }
+  // No explicit demand signal — fill the usable roof (commercial default).
+  return Math.max(1, panelFitMax);
 }
 
 /**
@@ -399,6 +447,10 @@ interface VariantConfig {
   batteryFactor: number;
   /** Multiplier on inverter sizing relative to system kWp. */
   inverterFactor: number;
+  /** Per-variant system-size multiplier vs the base roof-fit panel count, so the
+   *  three options differ in SIZE (margin = leaner/cheaper, ltv = fuller/more
+   *  savings), not just price. Clamped to what the roof physically fits. */
+  sizeFactor: number;
   /** € per installed kWp (panels + inverter + mounting + labour). */
   eurPerKwp: number;
   /** € per installed kWh of battery. */
@@ -425,6 +477,10 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best Margin",
     batteryFactor: 0.6,
     inverterFactor: 0.85,
+    // Three distinct size tiers so the options differ in system size (and
+    // therefore savings + payback), even when the roof caps the largest one:
+    // margin = leanest, closeRate = balanced, ltv = fills the roof.
+    sizeFactor: 0.75,
     eurPerKwp: 1700,
     eurPerKwhBattery: 600,
     eurHeatPump: 0,
@@ -445,6 +501,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best Close Rate",
     batteryFactor: 1.0,
     inverterFactor: 0.95,
+    sizeFactor: 0.88,
     eurPerKwp: 1800,
     eurPerKwhBattery: 700,
     eurHeatPump: 0,
@@ -465,6 +522,7 @@ const VARIANT_CONFIGS: VariantConfig[] = [
     label: "Best LTV",
     batteryFactor: 1.4,
     inverterFactor: 1.05,
+    sizeFactor: 1.0,
     eurPerKwp: 2000,
     eurPerKwhBattery: 900,
     eurHeatPump: 18000,
@@ -592,6 +650,14 @@ function buildVariant(input: BuildVariantInput): Variant {
   const paybackYears =
     annualSavingsEur > 0 ? round1(bom.totalEur / annualSavingsEur) : 0;
 
+  // Engineer-facing performance metrics (PVsyst/Helioscope style):
+  //  - consumptionOffsetPct: how much of the annual load the system generates.
+  //  - selfConsumptionPct: how much generation is used on-site vs exported.
+  const consumptionOffsetPct =
+    annualKwh > 0 ? Math.round((annualYieldKwh / annualKwh) * 100) : 0;
+  const selfConsumptionPct =
+    annualYieldKwh > 0 ? Math.round((selfConsumedKwh / annualYieldKwh) * 100) : 0;
+
   return {
     id: `V-${cfg.strategy}`,
     label: cfg.label,
@@ -604,6 +670,8 @@ function buildVariant(input: BuildVariantInput): Variant {
     confidence: cfg.confidence,
     citedProjectIds: ["P-001", "P-002", "P-003"],
     objection: cfg.objection,
+    consumptionOffsetPct,
+    selfConsumptionPct,
   };
 }
 
@@ -704,8 +772,11 @@ export function sizeQuote(
   const panelFitMax = calcPanelFitMax(roofSegments);
   const panelDemand = Math.ceil(annualKwhRaw / KWH_PER_PANEL_PER_YEAR_DE);
   const roofAware = panelFitMax > 0;
+  const commercial = isCommercialBuilding(intake.buildingType);
   const panelCount = roofAware
-    ? Math.max(1, Math.min(panelFitMax, Math.round(panelDemand * DEMAND_OVERSIZE)))
+    ? commercial
+      ? commercialPanelCount(intake, panelFitMax, panelDemand)
+      : Math.max(1, Math.min(panelFitMax, Math.round(panelDemand * DEMAND_OVERSIZE)))
     : calcPanelCount(annualKwhRaw);
   const systemKwpRaw = panelCount * PANEL_KW;
   const systemKwp = round1(systemKwpRaw);
@@ -713,7 +784,13 @@ export function sizeQuote(
   const baselineBatteryKwh = calcBatteryKwh(dailyKwh);
   const batteryKwhRecommended = round1(baselineBatteryKwh);
 
-  const annualYieldKwh = round0(systemKwpRaw * ANNUAL_YIELD_KWH_PER_KWP);
+  // Country/climate-aware specific yield: Germany (and absent country) stays at
+  // 950 kWh/kWp so nothing existing changes, but the UAE etc. get their real
+  // desert irradiance net of soiling + temperature losses.
+  const climate = climateProfileFor(intake.country);
+  const specificYield = climate.netSpecificYieldKwhPerKwp;
+
+  const annualYieldKwh = round0(systemKwpRaw * specificYield);
 
   const shouldOfferHp = shouldOfferHeatPump(intake, annualKwhRaw);
   const heatPumpKwBaseline = calcHeatPumpKw(DEFAULT_HEATED_AREA_M2);
@@ -733,23 +810,34 @@ export function sizeQuote(
     hasBattery: batteryKwhRecommended > 0,
   });
 
-  const variantInputBase = {
-    intake,
-    panelCount,
-    systemKwp: systemKwpRaw,
-    baselineBatteryKwh,
-    dailyKwh,
-    annualKwh: annualKwhRaw,
-    annualYieldKwh,
-    heatPumpKwBaseline,
-    shouldOfferHp,
-    eurPerKwh: eurPerKwhOverride ?? EUR_PER_KWH_RESIDENTIAL,
+  // Build each variant at its OWN system size (cfg.sizeFactor), clamped to what
+  // the roof physically fits — so the three options differ in size, savings, and
+  // price, not just price. The recommended (closeRate) sizeFactor is 1.0.
+  const eurPerKwhForVariants = eurPerKwhOverride ?? EUR_PER_KWH_RESIDENTIAL;
+  const roofCap = panelFitMax > 0 ? panelFitMax : panelCount;
+  const buildAtFactor = (cfg: VariantConfig): Variant => {
+    const vPanelCount = Math.max(1, Math.min(roofCap, Math.round(panelCount * cfg.sizeFactor)));
+    const vSystemKwp = vPanelCount * PANEL_KW;
+    const vYield = round0(vSystemKwp * specificYield);
+    return buildVariant({
+      cfg,
+      intake,
+      panelCount: vPanelCount,
+      systemKwp: vSystemKwp,
+      baselineBatteryKwh,
+      dailyKwh,
+      annualKwh: annualKwhRaw,
+      annualYieldKwh: vYield,
+      heatPumpKwBaseline,
+      shouldOfferHp,
+      eurPerKwh: eurPerKwhForVariants,
+    });
   };
 
   const variants: [Variant, Variant, Variant] = [
-    buildVariant({ cfg: VARIANT_CONFIGS[0], ...variantInputBase }),
-    buildVariant({ cfg: VARIANT_CONFIGS[1], ...variantInputBase }),
-    buildVariant({ cfg: VARIANT_CONFIGS[2], ...variantInputBase }),
+    buildAtFactor(VARIANT_CONFIGS[0]),
+    buildAtFactor(VARIANT_CONFIGS[1]),
+    buildAtFactor(VARIANT_CONFIGS[2]),
   ];
 
   const result: SizingResultWithAllocations = {
@@ -761,6 +849,13 @@ export function sizeQuote(
     systemKwp,
     batteryKwh: batteryKwhRecommended,
     annualYieldKwh,
+    climate: {
+      country: climate.code,
+      grossKwhPerKwp: climate.grossKwhPerKwp,
+      soilingLossPct: climate.soilingLossPct,
+      temperatureLossPct: climate.temperatureLossPct,
+      netSpecificYieldKwhPerKwp: climate.netSpecificYieldKwhPerKwp,
+    },
     rules,
     variants,
   };
@@ -782,7 +877,16 @@ export function sizeQuote(
   }
 
   result.variants = result.variants.map((variant) => {
-    const recommendation = recommendBom(result, intake, variant.strategy);
+    // Recommend + price each variant at its OWN size, so cost, savings, and
+    // payback all describe one consistent system (not the base size).
+    const vPanelCount = variant.bom.panels.count;
+    const vResult = {
+      ...result,
+      panelCount: vPanelCount,
+      systemKwp: round1(vPanelCount * PANEL_KW),
+      annualYieldKwh: round0(vPanelCount * PANEL_KW * specificYield),
+    };
+    const recommendation = recommendBom(vResult, intake, variant.strategy);
     const annualSavingsEur = variant.monthlySavingsEur * 12;
     return {
       ...variant,
@@ -795,7 +899,15 @@ export function sizeQuote(
     };
   }) as [Variant, Variant, Variant];
 
-  return result;
+  // Additive grid-type post-step (pure + deterministic). Returns `result`
+  // unchanged when intake.gridType is absent or "on_grid", so the golden
+  // profiles and every legacy call site are byte-identical.
+  const gridApplied = applyGridTypePolicy(result, intake, eurPerKwhOverride);
+
+  // Additive commercial-engineering post-step (pure + deterministic). Returns
+  // its input unchanged (same reference) for a residential/absent buildingType
+  // with no flat roofType, so residential stays byte-identical.
+  return applyCommercialEngineering(gridApplied, intake);
 }
 
 // ---------------------------------------------------------------------------

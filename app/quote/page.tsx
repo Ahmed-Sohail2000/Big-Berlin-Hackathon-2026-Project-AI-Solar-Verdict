@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { getResidentialTariff } from "@/lib/api/tavily";
+import { getBuildingInsights } from "@/lib/api/solar";
+import { resolveDemoLocation, nearestDemoByCoords } from "@/data/fixtures/demo-locations";
+import { currencyForCountry } from "@/lib/currency";
 import { sizeQuoteWithRationale } from "@/lib/sizing/calculate";
 import { VariantCardStack } from "@/components/homeowner/VariantCardStack";
 import { SendToInstaller } from "@/components/homeowner/SendToInstaller";
-import { SpouseShareCard } from "@/components/homeowner/SpouseShareCard";
 import { tryParseCoords } from "@/lib/parse-coords";
 import type { Intake, Preference, RoofSegment } from "@/lib/contracts";
 
@@ -24,6 +26,14 @@ interface SearchParams {
   wantsBattery?: string;
   wantsHeatPump?: string;
   annualKwh?: string;
+  gridType?: string;
+  // Commercial intake fields (additive per the frozen contract).
+  buildingType?: string;
+  country?: string;
+  roofType?: string;
+  peakDemandKw?: string;
+  /** Customer-entered €/kWh price — overrides the market tariff. */
+  price?: string;
 }
 
 interface GeocodeOk {
@@ -32,7 +42,22 @@ interface GeocodeOk {
   formattedAddress: string;
 }
 
-async function geocode(address: string, key: string): Promise<GeocodeOk | null> {
+async function geocode(address: string, key: string | undefined): Promise<GeocodeOk | null> {
+  // MOCK_MODE resolves every query to the fixture location, matching the
+  // /api/forward-geocode behavior — this keeps the fixture-backed chain
+  // (geocode → getBuildingInsights → sizing) returning real data offline.
+  if (process.env.MOCK_MODE === "true") {
+    // Resolve the typed address to the nearest curated demo location so the
+    // sizing runs on the right roof (residential vs commercial).
+    const loc = resolveDemoLocation(address);
+    return {
+      lat: loc.lat,
+      lng: loc.lng,
+      formattedAddress: loc.label,
+    };
+  }
+  if (!key) return null;
+
   // No country filter — global coverage
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${key}`;
   try {
@@ -51,25 +76,44 @@ async function geocode(address: string, key: string): Promise<GeocodeOk | null> 
   }
 }
 
-async function getRoofSegments(lat: number, lng: number, key: string): Promise<RoofSegment[]> {
-  const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${key}`;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000), cache: "no-store" });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const segs = data?.solarPotential?.roofSegmentStats ?? [];
-    return segs.map((s: {
+interface RoofMeasurement {
+  segments: RoofSegment[];
+  source: "live" | "cached" | "mock";
+}
+
+interface BuildingInsightsLite {
+  solarPotential?: {
+    roofSegmentStats?: Array<{
       pitchDegrees?: number;
       azimuthDegrees?: number;
       stats?: { areaMeters2?: number; sunshineQuantiles?: number[] };
-    }) => ({
-      pitchDegrees: s.pitchDegrees ?? 0,
-      azimuthDegrees: s.azimuthDegrees ?? 180,
-      areaMeters2: s.stats?.areaMeters2 ?? 0,
-      annualSunshineHours: s.stats?.sunshineQuantiles?.[5] ?? 1000,
-    }));
+    }>;
+  };
+}
+
+async function getRoofMeasurement(lat: number, lng: number): Promise<RoofMeasurement> {
+  // MOCK_MODE: measure the nearest curated demo roof — same source the
+  // /api/roof-facts mock branch uses, so the pane and the quote agree.
+  if (process.env.MOCK_MODE === "true") {
+    const loc = nearestDemoByCoords(lat, lng);
+    return { segments: loc.roofSegments, source: "mock" };
+  }
+  // Goes through lib/api/solar so MOCK_MODE fixtures, the 4s timeout, and the
+  // cached fallback all apply — identical behavior to /api/roof-facts.
+  try {
+    const { data, apiStatus } = await getBuildingInsights(lat, lng);
+    const segs = (data as BuildingInsightsLite | null)?.solarPotential?.roofSegmentStats ?? [];
+    return {
+      segments: segs.map((s) => ({
+        pitchDegrees: s.pitchDegrees ?? 0,
+        azimuthDegrees: s.azimuthDegrees ?? 180,
+        areaMeters2: s.stats?.areaMeters2 ?? 0,
+        annualSunshineHours: s.stats?.sunshineQuantiles?.[5] ?? 1000,
+      })),
+      source: apiStatus.source,
+    };
   } catch {
-    return [];
+    return { segments: [], source: "mock" };
   }
 }
 
@@ -82,13 +126,6 @@ function extractCity(address: string): string | undefined {
   return match?.[1]?.trim();
 }
 
-function formatTariffLine(tariff: Awaited<ReturnType<typeof getResidentialTariff>>): string {
-  const value = `€${tariff.eurPerKwh.toFixed(2)}/kWh`;
-  if (tariff.source === "tavily-live") {
-    return `Tariff source: Tavily live (${value}) · ${tariff.query}`;
-  }
-  return `Tariff: default ${value}`;
-}
 
 export default async function QuotePage({
   searchParams,
@@ -98,7 +135,7 @@ export default async function QuotePage({
   const params = await searchParams;
   const key = process.env.GOOGLE_MAPS_API_KEY;
 
-  if (!params.address || !key) {
+  if (!params.address) {
     return (
       <main className="min-h-dvh bg-[#0A0E1A] text-[#F7F8FA] flex flex-col items-center justify-center px-6 py-12">
         <h1 className="text-2xl font-semibold mb-2">Missing address</h1>
@@ -120,14 +157,33 @@ export default async function QuotePage({
     areaMeters2: 60,
     annualSunshineHours: 1100,
   };
-  const measuredSegments = geo ? await getRoofSegments(geo.lat, geo.lng, key) : [];
-  const hasLiveSolarMeasurement = measuredSegments.length > 0;
-  const segmentsForSizing = hasLiveSolarMeasurement ? measuredSegments : [fallbackSegment];
+  const measurement = geo
+    ? await getRoofMeasurement(geo.lat, geo.lng)
+    : { segments: [] as RoofSegment[], source: "mock" as const };
+  const measuredSegments = measurement.segments;
+  const hasSolarMeasurement = measuredSegments.length > 0;
+  const segmentsForSizing = hasSolarMeasurement ? measuredSegments : [fallbackSegment];
 
   const evPref = asPref(params.evPref, params.ev === "true" ? "yes" : "idk");
   const wantsBattery = asPref(params.wantsBattery);
   const wantsHeatPump = asPref(params.wantsHeatPump);
   const parsedAnnualKwh = params.annualKwh ? Number(params.annualKwh) : undefined;
+
+  // Commercial intake fields (additive per the frozen contract).
+  const BUILDING_TYPES: Intake["buildingType"][] = [
+    "residential",
+    "office",
+    "retail",
+    "warehouse",
+    "industrial",
+    "agricultural",
+  ];
+  const buildingType = BUILDING_TYPES.includes(params.buildingType as Intake["buildingType"])
+    ? (params.buildingType as Intake["buildingType"])
+    : undefined;
+  const roofType =
+    params.roofType === "flat" || params.roofType === "pitched" ? params.roofType : undefined;
+  const parsedPeakDemandKw = params.peakDemandKw ? Number(params.peakDemandKw) : undefined;
 
   const intake: Intake = {
     address: geo?.formattedAddress ?? params.address,
@@ -139,50 +195,69 @@ export default async function QuotePage({
     evPref,
     wantsBattery,
     wantsHeatPump,
+    gridType: params.gridType === "off_grid" || params.gridType === "hybrid" ? params.gridType : "on_grid",
+    buildingType,
+    country: params.country || undefined,
+    roofType,
+    peakDemandKw:
+      parsedPeakDemandKw && parsedPeakDemandKw > 0 ? parsedPeakDemandKw : undefined,
     heating: (params.heating ?? "gas") as Intake["heating"],
     goal: (params.goal ?? "lower_bill") as Intake["goal"],
   };
 
-  const tariff = await getResidentialTariff({
-    lat: intake.lat,
-    lng: intake.lng,
-    postcode: extractPostcode(intake.address),
-    city: extractCity(intake.address),
-  });
+  // Tariff drives the savings math. In MOCK_MODE use the resolved demo
+  // location's country tariff (so Dubai financials use the UAE rate, not a
+  // German one) and skip the live Tavily call; otherwise look it up live.
+  const demoLoc =
+    process.env.MOCK_MODE === "true" ? nearestDemoByCoords(intake.lat, intake.lng) : null;
+  const baseTariff = demoLoc
+    ? {
+        eurPerKwh: demoLoc.eurPerKwh,
+        source: "fallback" as const,
+        query: `${demoLoc.city} demo tariff`,
+        latencyMs: 0,
+      }
+    : await getResidentialTariff({
+        lat: intake.lat,
+        lng: intake.lng,
+        postcode: extractPostcode(intake.address),
+        city: extractCity(intake.address),
+      });
+
+  // A customer-entered price overrides the market rate (works for any country).
+  const userPrice = params.price ? Number(params.price) : undefined;
+  const tariff =
+    userPrice && userPrice > 0 ? { ...baseTariff, eurPerKwh: userPrice } : baseTariff;
 
   const sizing = await sizeQuoteWithRationale(intake, segmentsForSizing, tariff.eurPerKwh);
 
   return (
     <main className="relative min-h-dvh bg-[#0A0E1A] text-[#F7F8FA] flex flex-col">
       <nav className="flex items-center justify-between px-6 py-5 sm:px-10 z-30">
-        <Link href="/" className="text-base font-semibold tracking-tight">Verdict</Link>
+        <Link href="/" className="text-base font-semibold tracking-tight">HelioSense AI</Link>
         <Link href="/" className="text-sm text-[#9BA3AF] hover:text-[#F7F8FA]">← New quote</Link>
       </nav>
 
       <section className="flex-1 max-w-3xl w-full mx-auto px-6 sm:px-8 py-6 lg:py-12 flex flex-col gap-8">
         {/* Address + intake summary */}
         <header className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="flex items-center gap-1.5 rounded border border-[#62E6A7]/40 bg-[#0A0E1A] px-2 py-0.5 text-[#62E6A7]">
-              <span className="h-1.5 w-1.5 rounded-md bg-[#62E6A7]" />
-              {hasLiveSolarMeasurement ? "Measured live" : "Estimated (Solar API has no coverage here)"}
-            </span>
-            <span className="text-[#5B6470]">·</span>
-            <span className="text-[#9BA3AF] truncate">{intake.address}</span>
+          <div className="flex items-center gap-2 text-xs text-[#9BA3AF]">
+            <span className="truncate">{intake.address}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-semibold leading-tight">
-            Three Reonic-grounded options for your home.
+            Your three system options.
           </h1>
           <p className="text-sm text-[#9BA3AF]">
-            {sizing.systemKwp} kWp system &middot; {sizing.annualKwh.toLocaleString()} kWh/yr demand &middot; {measuredSegments.length} roof face{measuredSegments.length !== 1 ? "s" : ""} measured
-          </p>
-          <p className="text-xs text-[#9BA3AF]">
-            {formatTariffLine(tariff)}
+            Each one is AI-engineered from your roof &mdash; pick the option that fits, then send it
+            to a certified solar installer.
           </p>
         </header>
 
         {/* The three variants */}
-        <VariantCardStack variants={sizing.variants} />
+        <VariantCardStack
+          variants={sizing.variants}
+          defaultCurrency={currencyForCountry(intake.country)}
+        />
 
         {/* Send to installer — POSTs the real lead with this homeowner's intake + live roof segments */}
         <SendToInstaller
@@ -195,23 +270,20 @@ export default async function QuotePage({
             evPref: intake.evPref,
             wantsBattery: intake.wantsBattery,
             wantsHeatPump: intake.wantsHeatPump,
+            gridType: intake.gridType,
+            buildingType: intake.buildingType,
+            country: intake.country,
+            roofType: intake.roofType,
+            peakDemandKw: intake.peakDemandKw,
             heating: intake.heating,
             goal: intake.goal,
           }}
           roofSegments={segmentsForSizing}
         />
 
-        {/* Spouse-share viral moment */}
-        <SpouseShareCard
-          monthlySavingsEur={sizing.variants[1].monthlySavingsEur}
-          paybackYears={sizing.variants[1].paybackYears}
-          systemKwp={sizing.systemKwp}
-          address={intake.address}
-        />
-
         {/* Trust line */}
         <p className="text-[11px] text-[#5B6470] text-center">
-          Recommendations cite real Reonic projects from your region. No purchase made — installer reviews and confirms.
+          No purchase made &mdash; a certified solar installer reviews and confirms the design.
         </p>
       </section>
     </main>

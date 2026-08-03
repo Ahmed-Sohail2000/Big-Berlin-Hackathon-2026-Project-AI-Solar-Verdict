@@ -2,22 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { IntakePanel } from "./IntakePanel";
-import { CesiumRoofView } from "./CesiumRoofView";
+import { RoofPanelOverlay3D } from "./RoofPanelOverlay3D";
+import { SyntheticRoof3D } from "./SyntheticRoof3D";
 import { RuhrCinematic } from "./RuhrCinematic";
 import { LiveRoofFacts } from "./LiveRoofFacts";
 import { InstallerApprovedToast } from "./InstallerApprovedToast";
 import { LayerSwitcher, type LayerMode } from "./LayerSwitcher";
 import { HeatmapView } from "./HeatmapView";
 import { RoofPreview } from "./RoofPreview";
+import type { SolarPanelEntry } from "@/components/installer/PanelOverlayCesium";
 import type { RoofSegment } from "@/lib/contracts";
 
 interface RoofFactsState {
   segments: RoofSegment[];
   totalAreaM2: number;
   imageryDate?: { year: number; month: number; day: number };
+  /** Google's AI per-panel placement (top 200 by yield). Optional — absent when
+   *  the Solar API / fixture has no per-panel data for this location. */
+  solarPanels?: SolarPanelEntry[];
   source: "live" | "cached" | "mock";
   status?: "ok" | "error" | "timeout";
   message?: string;
+  /** Detected building class (mock mode) — drives the residential/commercial 3D. */
+  classification?: "residential" | "commercial";
+  roofType?: "pitched" | "flat";
 }
 
 export function HomeShell() {
@@ -26,6 +34,11 @@ export function HomeShell() {
   const [roofFacts, setRoofFacts] = useState<RoofFactsState | null>(null);
   const [loadingRoof, setLoadingRoof] = useState(false);
   const [layerMode, setLayerMode] = useState<LayerMode>("photoreal");
+
+  // In MOCK_MODE there are no Google keys, so the photoreal Cesium tiles can't
+  // load. Instead of the "3D disabled" placeholder, render a fully-offline
+  // procedural 3D simulation of the commercial roof + AI panel array.
+  const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === "true";
 
   useEffect(() => {
     if (!coords) {
@@ -50,25 +63,29 @@ export function HomeShell() {
   }, [coords]);
 
   return (
-    <main className="relative min-h-dvh bg-[#0A0E1A] text-[#F7F8FA] flex flex-col">
-      {/* Top nav */}
-      <nav className="flex items-center justify-between px-6 py-5 sm:px-10 z-30 bg-[#0A0E1A]/80 backdrop-blur">
-        <span className="text-base font-semibold tracking-tight">Verdict</span>
-        <a
-          href="/installer"
-          className="text-sm text-[#9BA3AF] hover:text-[#F7F8FA] transition-colors"
-        >
-          For installers
-        </a>
-      </nav>
-
+    <div className="relative min-h-[calc(100dvh-64px)] bg-[#0A0E1A] text-[#F7F8FA] flex flex-col">
+      {/* Nav is owned by the landing page (app/page.tsx) — HomeShell renders only the two-pane app. */}
       {/* Two-pane: 3D / satellite roof left, intake right */}
       <section className="flex-1 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-0">
         {/* LEFT */}
         <div className="relative h-[42vh] lg:h-auto bg-[#0A0E1A] border-b lg:border-b-0 lg:border-r border-[#1A1F2A] overflow-hidden">
           {coords ? (
             <>
-              {layerMode === "photoreal" && <CesiumRoofView coords={coords} address={address} />}
+              {layerMode === "photoreal" &&
+                (isMock ? (
+                  <SyntheticRoof3D
+                    address={address}
+                    totalAreaM2={roofFacts?.totalAreaM2}
+                    panelCount={roofFacts?.solarPanels?.length}
+                    variant={roofFacts?.classification ?? "commercial"}
+                  />
+                ) : (
+                  <RoofPanelOverlay3D
+                    coords={coords}
+                    address={address}
+                    panels={roofFacts?.solarPanels ?? []}
+                  />
+                ))}
               {layerMode === "heatmap"   && <HeatmapView coords={coords} address={address} />}
               {layerMode === "map"       && <RoofPreview coords={coords} address={address} />}
               <LayerSwitcher value={layerMode} onChange={setLayerMode} />
@@ -100,7 +117,7 @@ export function HomeShell() {
         </div>
 
         {/* RIGHT */}
-        <div className="flex flex-col px-6 sm:px-10 lg:px-12 py-6 lg:py-8 overflow-y-auto lg:max-h-[calc(100dvh-72px)]">
+        <div className="flex flex-col px-6 sm:px-10 lg:px-12 py-6 lg:py-8 overflow-y-auto lg:max-h-[calc(100dvh-64px)]">
           <IntakePanel
             onLocate={(c, a) => {
               setCoords(c);
@@ -112,6 +129,6 @@ export function HomeShell() {
 
       {/* Push notification when installer approves the lead (polls every 2s) */}
       <InstallerApprovedToast />
-    </main>
+    </div>
   );
 }

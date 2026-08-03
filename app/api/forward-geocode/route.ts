@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveDemoLocation } from "@/data/fixtures/demo-locations";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,23 @@ export async function GET(req: NextRequest) {
   const key = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!q) return NextResponse.json({ error: "missing ?q parameter" }, { status: 400 });
+
+  if (process.env.MOCK_MODE === 'true') {
+    // Snap the typed query to the nearest curated demo location and hand back
+    // the detected building class so the intake can auto-select it (with a
+    // manual override still available).
+    const loc = resolveDemoLocation(q);
+    return NextResponse.json({
+      address: loc.label,
+      lat: loc.lat,
+      lng: loc.lng,
+      buildingType: loc.buildingType,
+      classification: loc.classification,
+      roofType: loc.roofType,
+      country: loc.country,
+    });
+  }
+
   if (!key) return NextResponse.json({ error: "server missing GOOGLE_MAPS_API_KEY" }, { status: 500 });
 
   // No country filter — accept any address worldwide (Solar API will gracefully 404 if no coverage)

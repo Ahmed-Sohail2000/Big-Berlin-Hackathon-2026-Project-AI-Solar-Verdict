@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
+  Layers,
   Lock,
   Mail,
   MapPin,
@@ -16,18 +20,42 @@ import {
   Sparkles,
   Sun,
 } from "lucide-react";
-import type { BoM, Intake, RoofSegment, Strategy, Variant } from "@/lib/contracts";
+import type {
+  BuildingType,
+  GridType,
+  Intake,
+  RoofSegment,
+  RoofType,
+  SizingResult,
+  Strategy,
+  Variant,
+} from "@/lib/contracts";
 import type { LeadRecord } from "@/lib/leads/store";
-import { sizeQuote, type SizingResultWithAllocations } from "@/lib/sizing/calculate";
+import {
+  allocatePanelsToSegments,
+  sizeQuote,
+  type SizingResultWithAllocations,
+} from "@/lib/sizing/calculate";
 import {
   composeFromMarket,
   type SizingResultWithMarket,
   type VariantSourceUrls,
 } from "@/lib/sizing/compose-from-market";
+import {
+  commercialEngineeringApplies,
+  computeCommercialEngineering,
+} from "@/lib/sizing/commercial-policy";
 import { CesiumRoofView } from "@/components/homeowner/CesiumRoofView";
-import { PanelLayoutPreview } from "@/components/installer/PanelLayoutPreview";
+import { SyntheticRoof3D } from "@/components/homeowner/SyntheticRoof3D";
+import {
+  BillOfMaterials,
+  type CustomLineItem,
+} from "@/components/installer/BillOfMaterials";
+import { EngineeringPanel } from "@/components/installer/EngineeringPanel";
+import { ElectricalDesignPanel } from "@/components/installer/ElectricalDesignPanel";
+import { RoofStructureEditor } from "@/components/installer/RoofStructureEditor";
 import { SegmentBreakdown } from "@/components/installer/SegmentBreakdown";
-import { SourceUrlChip } from "@/components/installer/SourceUrlChip";
+import { SingleLineDiagram } from "@/components/installer/SingleLineDiagram";
 import {
   PanelOverlayCesium,
   panelKey,
@@ -53,6 +81,7 @@ interface RoofFactsResponse {
     center?: { latitude?: number; longitude?: number };
   }>;
   totalAreaM2?: number;
+  source?: "live" | "cached" | "mock";
   solarPanels?: Array<{
     center: { latitude: number; longitude: number };
     orientation: "LANDSCAPE" | "PORTRAIT";
@@ -94,58 +123,28 @@ function formatTime(iso?: string): string {
   }).format(new Date(iso));
 }
 
-interface BomLine {
-  label: string;
-  value: string;
-  sourceUrl?: string;
-}
+/** Display labels for the grid connection type (read-only from intake). */
+const GRID_TYPE_LABEL: Record<GridType, string> = {
+  on_grid: "On-grid",
+  off_grid: "Off-grid",
+  hybrid: "Hybrid",
+};
 
-function bomLines(bom: BoM, urls?: VariantSourceUrls): BomLine[] {
-  const lines: BomLine[] = [
-    {
-      label: "Panels",
-      value: `${bom.panels.brand} ${bom.panels.model} x${bom.panels.count} · ${(
-        (bom.panels.count * bom.panels.wp) /
-        1000
-      ).toFixed(1)} kWp`,
-      sourceUrl: urls?.panel,
-    },
-    {
-      label: "Inverter",
-      value: `${bom.inverter.brand} ${bom.inverter.model} · ${bom.inverter.kw} kW`,
-      sourceUrl: urls?.inverter,
-    },
-  ];
-  if (bom.battery) {
-    lines.push({
-      label: "Battery",
-      value: `${bom.battery.brand} ${bom.battery.model} · ${bom.battery.kwh} kWh`,
-      sourceUrl: urls?.battery,
-    });
-  }
-  if (bom.wallbox) {
-    lines.push({
-      label: "Wallbox",
-      value: `${bom.wallbox.brand} ${bom.wallbox.model} · ${bom.wallbox.kw} kW`,
-      sourceUrl: urls?.wallbox,
-    });
-  }
-  if (bom.heatPump) {
-    lines.push({
-      label: "Heat pump",
-      value: `${bom.heatPump.brand} ${bom.heatPump.model} · ${bom.heatPump.kw} kW`,
-      sourceUrl: urls?.heatPump,
-    });
-  }
-  if (urls?.mount) {
-    lines.push({
-      label: "Mount",
-      value: "per-panel mounting hardware",
-      sourceUrl: urls.mount,
-    });
-  }
-  return lines;
-}
+/** Display labels for the building use class (read-only from intake). */
+const BUILDING_TYPE_LABEL: Record<BuildingType, string> = {
+  residential: "Residential",
+  office: "Office",
+  retail: "Retail",
+  warehouse: "Warehouse",
+  industrial: "Industrial",
+  agricultural: "Agricultural",
+};
+
+/** Display labels for the roof geometry class (read-only from intake). */
+const ROOF_TYPE_LABEL: Record<RoofType, string> = {
+  pitched: "Pitched roof",
+  flat: "Flat roof",
+};
 
 type AzimuthBucket = "E" | "SE" | "S" | "SW" | "W" | "N" | "flat";
 
@@ -257,12 +256,37 @@ function intakeFromLead(lead: LeadRecord): Intake {
     evPref: prefs.evPref,
     wantsBattery: prefs.wantsBattery,
     wantsHeatPump: prefs.wantsHeatPump,
+    gridType: prefs.gridType,
     heating: prefs.heating as Intake["heating"],
     goal,
+    // Forwarded so commercial-policy.ts's commercialEngineeringApplies()/
+    // computeCommercialEngineering() see the same buildingType/roofType the
+    // lead was created with — without these, every intake built from a lead
+    // reads as residential and the commercial engineering block never
+    // recomputes (it silently falls back to the frozen creation-time
+    // snapshot instead).
+    buildingType: prefs.buildingType,
+    roofType: prefs.roofType,
+    country: prefs.country,
   };
 }
 
 type LiveSizing = SizingResultWithMarket & Partial<SizingResultWithAllocations>;
+
+/** Installer design-workflow step — a free-jump tab, not a gated wizard.
+ *  Distinct from the deal STATUS axis (lead.status / `unlocked`), which
+ *  tracks whether the lead is accepted/offered, not which design tab is open. */
+type InstallerStep = "design" | "electrical" | "bom" | "proposal";
+
+/** Live preview surfaced by the roof-structure editor overlay while it's
+ *  open, so the MAIN 3D pane (not a second preview) reflects in-progress
+ *  edits before "Apply structure" is clicked. */
+interface RoofEditPreview {
+  totalAreaM2: number;
+  panelCount?: number;
+  tiltDegrees?: number;
+  rowSpacingMeters?: number;
+}
 
 export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const [liveSizing, setLiveSizing] = useState<LiveSizing | null>(null);
@@ -273,6 +297,9 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     useState<NonNullable<RoofFactsResponse["segments"]>>([]);
   const [liveLoading, setLiveLoading] = useState(true);
   const [liveError, setLiveError] = useState(false);
+  // Actual data source reported by /api/roof-facts. The badges must reflect
+  // this honestly (hard rule: Live/Cached badge never lies about the source).
+  const [liveSource, setLiveSource] = useState<"live" | "cached" | "mock" | null>(null);
 
   // Cesium-overlay state. Viewer comes from CesiumRoofView via the
   // onViewerReady callback. solarPanels arrives from /api/roof-facts (Google's
@@ -293,6 +320,21 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   );
   const [showPanels, setShowPanels] = useState(true);
   const [editMode, setEditMode] = useState(false);
+  // Design-workflow tab. Freely switchable — not a linear gated wizard.
+  const [activeStep, setActiveStep] = useState<InstallerStep>("design");
+  // Roof-structure-edit overlay (mock-3D only) + its live preview, consumed
+  // by the MAIN SyntheticRoof3D instance so there is exactly one 3D view.
+  const [roofEditorOpen, setRoofEditorOpen] = useState(false);
+  const [roofEditPreview, setRoofEditPreview] = useState<RoofEditPreview | null>(null);
+  // Panel count from the most recent "Apply structure" in the roof-structure
+  // editor. Overrides sizerPanelCount immediately (no fetch round-trip
+  // needed) so Design/BoM/Proposal/Electrical all reflect the new count as
+  // soon as the installer applies an edit. Reset on lead-identity change.
+  const [structurePanelOverride, setStructurePanelOverride] = useState<number | null>(null);
+  // The 3D fills the dashboard; the proposal (stepper + BoM + financials +
+  // engineering + actions) lives in a right slide-over the installer can
+  // collapse to inspect the roof full-screen.
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const [sunLayerVisible, setSunLayerVisible] = useState(true);
   const [heatmapMeta, setHeatmapMeta] = useState<DataLayersMeta | null>(null);
   const [heatmapSampler, setHeatmapSampler] = useState<HeatmapSampler | null>(null);
@@ -313,30 +355,134 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   // publicPreview's BoM was composed at lead creation time with exactly
   // panelCount panels, so its totalEur and count are by construction
   // consistent.
-  const baseVariants: Variant[] = useMemo(
-    () =>
-      lead.publicPreview.bomVariants.map((variant) => ({
-        ...variant,
-        bom: {
-          ...variant.bom,
-          panels: {
-            ...variant.bom.panels,
-            count: leadPanelCount,
-          },
-        },
-      })),
-    [lead.publicPreview.bomVariants, leadPanelCount],
-  );
+  // Each variant now carries its OWN system size (margin = fewer panels,
+  // ltv = roof-full), so we surface the native per-variant BoM instead of
+  // pinning every option to one count. Selecting an option flows its size
+  // into the 3D view, the BoM table, and the financials below.
+  const baseVariants: Variant[] = lead.publicPreview.bomVariants;
+  const variants = baseVariants;
 
-  const [selectedVariantId, setSelectedVariantId] = useState(lead.publicPreview.bomVariants[1]?.id);
+  const [selectedVariantId, setSelectedVariantId] = useState(baseVariants[1]?.id);
+  // Engineer-added BoM lines (a battery, heat pump, wiring/BoS line). Local to
+  // the session; they fold into the displayed BoM + financial total.
+  const [customItems, setCustomItems] = useState<CustomLineItem[]>([]);
   const [busy, setBusy] = useState<"accept" | "offer" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const unlocked = lead.status !== "new";
+
+  // The variant the installer picked, at its native size + price + savings,
+  // before any manual panel edits are layered on. This is what drives the 3D
+  // panel target, so a cheaper pick literally shows fewer panels on the roof.
+  const selectedBaseVariant =
+    baseVariants.find((v) => v.id === selectedVariantId) ??
+    baseVariants[1] ??
+    baseVariants[0];
+
+  // Core fetch-roof-facts + recompute-sizing logic, extracted so it can be
+  // called both by the on-mount/lead-change effect below AND by the manual
+  // "Recalculate" action in the KPI header. Pure w.r.t. component state — it
+  // returns the computed values and lets the caller decide what to do with
+  // them (setState for the effect, setState + PATCH-to-lead for the button).
+  const fetchAndComputeLiveRoofFacts = useCallback(
+    async (leadArg: LeadRecord): Promise<{
+      source: "live" | "cached" | "mock" | null;
+      sizing: LiveSizing;
+      segments: RoofSegment[];
+      rawSegments: NonNullable<RoofFactsResponse["segments"]>;
+      totalAreaM2: number | null;
+      pitchDeg: number;
+      solarPanels: SolarPanelEntry[];
+    } | null> => {
+      const { lat, lng } = leadArg.privateDetails;
+      const res = await fetch(`/api/roof-facts?lat=${lat}&lng=${lng}`, { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = (await res.json()) as RoofFactsResponse;
+
+      const rawSegments = Array.isArray(data.segments) ? data.segments : [];
+      if (rawSegments.length === 0) return null;
+      const segments: RoofSegment[] = rawSegments.map((s) => ({
+        pitchDegrees: s.pitchDegrees ?? 0,
+        azimuthDegrees: s.azimuthDegrees ?? 180,
+        areaMeters2: s.areaMeters2 ?? 0,
+        annualSunshineHours: s.annualSunshineHours ?? 1000,
+      }));
+      const intake = intakeFromLead(leadArg);
+
+      // Primary path: market-driven composer.
+      // Fallback path: legacy sizeQuote so the demo never crashes.
+      let sizing: LiveSizing | null = null;
+      try {
+        const market = composeFromMarket({ intake, roofSegments: segments });
+        if (market) sizing = market as LiveSizing;
+      } catch (err) {
+        console.warn("composeFromMarket failed, falling back to sizeQuote", err);
+      }
+      if (!sizing) {
+        try {
+          sizing = sizeQuote(intake, segments) as LiveSizing;
+        } catch (innerErr) {
+          console.error("sizeQuote fallback also failed", innerErr);
+        }
+      }
+      if (!sizing) return null;
+
+      // The per-segment placement table must agree with the BoM the
+      // installer sees, which is anchored to the panel count the homeowner
+      // was quoted (lead.publicPreview). The market composer doesn't emit
+      // allocations at all, and the sizeQuote fallback allocates its own
+      // (possibly larger) count — recompute against the anchored count so
+      // every displayed number tells the same story.
+      try {
+        const anchorCount = leadArg.publicPreview.sizing.panelCount;
+        const allocations = allocatePanelsToSegments(segments, anchorCount);
+        sizing.segmentAllocations = allocations;
+        sizing.mpptStringCount = new Set(
+          allocations.filter((a) => a.status === "used").map((a) => a.stringId),
+        ).size;
+      } catch (allocErr) {
+        console.warn("allocatePanelsToSegments failed", allocErr);
+      }
+
+      // Wire up Google's per-panel placement for the Cesium overlay. Each
+      // panel inherits its segment's azimuth (rounded ints from the API) so
+      // the rectangle rotates to the roof slope, AND its segment's WGS84
+      // height (planeHeightAtCenterMeters) so it sits ON the roof rather
+      // than at sea level. The roof-facts route now returns both directly
+      // on each panel — we trust those when present, fall back to segments
+      // lookup when not.
+      const rawPanels = Array.isArray(data.solarPanels) ? data.solarPanels : [];
+      const enriched: SolarPanelEntry[] = rawPanels.map((p) => ({
+        center: { latitude: p.center.latitude, longitude: p.center.longitude },
+        orientation: p.orientation,
+        segmentIndex: p.segmentIndex,
+        yearlyEnergyDcKwh: p.yearlyEnergyDcKwh,
+        segmentAzimuthDegrees:
+          p.segmentAzimuthDegrees ?? segments[p.segmentIndex]?.azimuthDegrees,
+        segmentPitchDegrees:
+          p.segmentPitchDegrees ?? segments[p.segmentIndex]?.pitchDegrees,
+        segmentHeightMeters: p.segmentHeightMeters,
+        segmentCenterLat: p.segmentCenterLat,
+        segmentCenterLng: p.segmentCenterLng,
+      }));
+
+      return {
+        source: data.source ?? null,
+        sizing,
+        segments,
+        rawSegments,
+        totalAreaM2: typeof data.totalAreaM2 === "number" ? data.totalAreaM2 : null,
+        pitchDeg: median(segments.map((s) => s.pitchDegrees)),
+        solarPanels: enriched,
+      };
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
     setLiveLoading(true);
     setLiveError(false);
+    setLiveSource(null);
     // Reset overlay state when the lead identity changes — different building,
     // different panels, no carry-over removals or manual additions.
     setSolarPanels([]);
@@ -344,86 +490,32 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setRemovedPanelKeys(new Set());
     setDisabledSegmentIndexes(new Set());
     setOverlayRoofSegments([]);
+    setCustomItems([]);
     setEditMode(false);
+    setActiveStep("design");
+    setRoofEditorOpen(false);
+    setRoofEditPreview(null);
+    setStructurePanelOverride(null);
     setHeatmapMeta(null);
     setHeatmapSampler(null);
     setHeatmapStatus("loading");
     setSunLayerVisible(true);
 
-    const { lat, lng } = lead.privateDetails;
-    fetch(`/api/roof-facts?lat=${lat}&lng=${lng}`, { cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error("roof-facts failed");
-        return res.json() as Promise<RoofFactsResponse>;
-      })
-      .then((data) => {
+    fetchAndComputeLiveRoofFacts(lead)
+      .then((result) => {
         if (cancelled) return;
-        const rawSegments = Array.isArray(data.segments) ? data.segments : [];
-        if (rawSegments.length === 0) {
+        if (!result) {
           setLiveError(true);
           setLiveLoading(false);
           return;
         }
-        const segments: RoofSegment[] = rawSegments.map((s) => ({
-          pitchDegrees: s.pitchDegrees ?? 0,
-          azimuthDegrees: s.azimuthDegrees ?? 180,
-          areaMeters2: s.areaMeters2 ?? 0,
-          annualSunshineHours: s.annualSunshineHours ?? 1000,
-        }));
-        const intake = intakeFromLead(lead);
-
-        // Primary path: market-driven composer.
-        // Fallback path: legacy sizeQuote so the demo never crashes.
-        let sizing: LiveSizing | null = null;
-        try {
-          const market = composeFromMarket({ intake, roofSegments: segments });
-          if (market) sizing = market as LiveSizing;
-        } catch (err) {
-          console.warn("composeFromMarket failed, falling back to sizeQuote", err);
-        }
-        if (!sizing) {
-          try {
-            sizing = sizeQuote(intake, segments) as LiveSizing;
-          } catch (innerErr) {
-            console.error("sizeQuote fallback also failed", innerErr);
-          }
-        }
-
-        if (!sizing) {
-          setLiveError(true);
-          setLiveLoading(false);
-          return;
-        }
-
-        setLiveSizing(sizing);
-        setLiveSegments(segments);
-        setOverlayRoofSegments(rawSegments);
-        setLiveTotalAreaM2(typeof data.totalAreaM2 === "number" ? data.totalAreaM2 : null);
-        setLivePitchDeg(median(segments.map((s) => s.pitchDegrees)));
-
-        // Wire up Google's per-panel placement for the Cesium overlay. Each
-        // panel inherits its segment's azimuth (rounded ints from the API) so
-        // the rectangle rotates to the roof slope, AND its segment's WGS84
-        // height (planeHeightAtCenterMeters) so it sits ON the roof rather
-        // than at sea level. The roof-facts route now returns both directly
-        // on each panel — we trust those when present, fall back to segments
-        // lookup when not.
-        const rawPanels = Array.isArray(data.solarPanels) ? data.solarPanels : [];
-        const enriched: SolarPanelEntry[] = rawPanels.map((p) => ({
-          center: { latitude: p.center.latitude, longitude: p.center.longitude },
-          orientation: p.orientation,
-          segmentIndex: p.segmentIndex,
-          yearlyEnergyDcKwh: p.yearlyEnergyDcKwh,
-          segmentAzimuthDegrees:
-            p.segmentAzimuthDegrees ?? segments[p.segmentIndex]?.azimuthDegrees,
-          segmentPitchDegrees:
-            p.segmentPitchDegrees ?? segments[p.segmentIndex]?.pitchDegrees,
-          segmentHeightMeters: p.segmentHeightMeters,
-          segmentCenterLat: p.segmentCenterLat,
-          segmentCenterLng: p.segmentCenterLng,
-        }));
-        setSolarPanels(enriched);
-
+        setLiveSource(result.source);
+        setLiveSizing(result.sizing);
+        setLiveSegments(result.segments);
+        setOverlayRoofSegments(result.rawSegments);
+        setLiveTotalAreaM2(result.totalAreaM2);
+        setLivePitchDeg(result.pitchDeg);
+        setSolarPanels(result.solarPanels);
         setLiveLoading(false);
       })
       .catch(() => {
@@ -435,7 +527,91 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [lead]);
+    // Deliberately keyed on lead.id (not the `lead` object) — the object
+    // reference also changes when Recalculate / the roof-structure editor's
+    // Apply / accept / offer PATCH the SAME lead's preview and the parent
+    // pushes the updated record back down via onLeadChange. If this effect
+    // re-ran on every such content-only update it would blow away in-progress
+    // manual panel edits, custom BoM lines, and re-fetch roof-facts a second
+    // time right after the action's own fetch already got fresh data. It
+    // should only reset/refetch when the installer switches to a genuinely
+    // different lead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id, fetchAndComputeLiveRoofFacts]);
+
+  // Manual "Recalculate" action — re-fetches roof facts + re-runs sizing,
+  // then writes the fresh totalAreaM2/pitchDeg (and panelCount if the
+  // anchored count changed) back to the lead via PATCH .../sync-preview, so
+  // the marketplace list card and this detail view agree on the same
+  // numbers going forward instead of only this tab seeing the live values.
+  const [recalcBusy, setRecalcBusy] = useState(false);
+  const [recalcNotice, setRecalcNotice] = useState<string | null>(null);
+
+  const recalculate = useCallback(async () => {
+    setRecalcBusy(true);
+    setRecalcNotice(null);
+    try {
+      const result = await fetchAndComputeLiveRoofFacts(lead);
+      if (!result) {
+        setRecalcNotice("Recalculate failed — try again.");
+        return;
+      }
+      setLiveError(false);
+      setLiveSource(result.source);
+      setLiveSizing(result.sizing);
+      setLiveSegments(result.segments);
+      setOverlayRoofSegments(result.rawSegments);
+      setLiveTotalAreaM2(result.totalAreaM2);
+      setLivePitchDeg(result.pitchDeg);
+      setSolarPanels(result.solarPanels);
+
+      const freshPanelCount = result.sizing.panelCount;
+      const payload: {
+        action: "sync-preview";
+        roofFacts: { totalAreaM2?: number; pitchDeg?: number };
+        panelCount?: number;
+      } = {
+        action: "sync-preview",
+        roofFacts: {
+          ...(typeof result.totalAreaM2 === "number"
+            ? { totalAreaM2: Math.round(result.totalAreaM2 * 10) / 10 }
+            : {}),
+          pitchDeg: Math.round(result.pitchDeg),
+        },
+      };
+      if (
+        typeof freshPanelCount === "number" &&
+        freshPanelCount !== lead.publicPreview.sizing.panelCount
+      ) {
+        payload.panelCount = freshPanelCount;
+      }
+
+      const res = await fetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json().catch(() => null)) as { lead?: LeadRecord } | null;
+      if (!res.ok || !data?.lead) {
+        setRecalcNotice("Roof re-measured, but saving to the lead failed.");
+        return;
+      }
+      onLeadChange(data.lead);
+      setRecalcNotice("Updated");
+    } catch {
+      setRecalcNotice("Recalculate failed — try again.");
+    } finally {
+      setRecalcBusy(false);
+    }
+  }, [lead, fetchAndComputeLiveRoofFacts, onLeadChange]);
+
+  // Clear the transient "Updated" / error notice a few seconds after it
+  // appears so it doesn't linger indefinitely next to the KPI tiles.
+  useEffect(() => {
+    if (!recalcNotice) return;
+    const t = setTimeout(() => setRecalcNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [recalcNotice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -510,6 +686,18 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     setDisabledSegmentIndexes(new Set());
   }, []);
 
+  // Add / remove an engineer-supplied BoM line. Additive line items with a
+  // label + optional € that fold into the displayed total (task 5).
+  const addCustomItem = useCallback((item: { label: string; eur?: number }) => {
+    setCustomItems((prev) => [
+      ...prev,
+      { id: `custom-${Date.now()}-${prev.length}`, label: item.label, eur: item.eur },
+    ]);
+  }, []);
+  const removeCustomItem = useCallback((id: string) => {
+    setCustomItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   // Toggle a roof segment on/off in the SegmentBreakdown sidebar. AI panels
   // belonging to disabled segments are pulled from the Cesium overlay and
   // also counted out of the BoM scale, so the installer can exclude e.g.
@@ -523,10 +711,11 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     });
   }, []);
 
-  // Panel target used by the overlay and BoM display. Keep this tied to the
-  // stored lead preview so a live re-size cannot silently turn a 13-panel
-  // homeowner quote into a 30-panel installer overlay.
-  const sizerPanelCount = leadPanelCount;
+  // Panel target used by the overlay + BoM display: the SELECTED variant's
+  // native panel count. Switching Best Margin → Best LTV changes this, which
+  // flows into the 3D top-slice, the active count, and the financials so all
+  // three views stay consistent with the picked option.
+  const sizerPanelCount = structurePanelOverride ?? selectedBaseVariant.bom.panels.count;
 
   const panelYieldKwh = useCallback(
     (panel: SolarPanelEntry): number => {
@@ -618,58 +807,192 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     [aiTopSlice, disabledSegmentIndexes, manuallyAddedPanels, panelYieldKwh, removedPanelKeys],
   );
   const yieldScale = totalSlicedYieldKwh > 0 ? activeYieldKwh / totalSlicedYieldKwh : 1;
-  const variants: Variant[] = useMemo(() => {
-    return baseVariants.map((v) => ({
-      ...v,
-      bom: {
-        ...v.bom,
-        panels: {
-          ...v.bom.panels,
-          count: activePanelCount,
-        },
-      },
-      monthlySavingsEur: Math.round(v.monthlySavingsEur * yieldScale),
-      // Payback scales inversely with expected production. Removing a high-
-      // yield panel now hurts more than removing a weak one.
-      paybackYears:
-        yieldScale > 0
-          ? Math.round((v.paybackYears / yieldScale) * 10) / 10
-          : v.paybackYears,
-    }));
-  }, [baseVariants, activePanelCount, yieldScale]);
 
-  // Reconcile selected variant when variants list changes (e.g. live data swaps it).
+  // Fires when the roof-structure editor's "Apply structure" succeeds. Folds
+  // the new panel count + segments into local state immediately (no fetch
+  // round-trip) so the Design/BoM/Proposal/Electrical steps all reflect the
+  // edit right away, matching what the editor already persisted server-side.
+  const handleStructureApplied = useCallback(
+    (result: { panelCount: number; segments: RoofSegment[]; totalAreaM2: number }) => {
+      setStructurePanelOverride(result.panelCount);
+      setLiveSegments(result.segments);
+      setLiveTotalAreaM2(result.totalAreaM2);
+      setLivePitchDeg(median(result.segments.map((s) => s.pitchDegrees)));
+    },
+    [],
+  );
+
+  // Reconcile the selection if a lead swap left a stale id.
   useEffect(() => {
-    if (!variants.find((v) => v.id === selectedVariantId)) {
-      setSelectedVariantId(variants[1]?.id ?? variants[0]?.id);
+    if (!baseVariants.find((v) => v.id === selectedVariantId)) {
+      setSelectedVariantId(baseVariants[1]?.id ?? baseVariants[0]?.id);
     }
-  }, [variants, selectedVariantId]);
+  }, [baseVariants, selectedVariantId]);
 
-  const selectedVariant =
-    variants.find((variant) => variant.id === selectedVariantId) ??
-    variants[1] ??
-    variants[0];
+  // The proposal-facing variant: the picked option resized to the active panel
+  // count (native size ± the installer's manual roof edits), with savings and
+  // payback scaled by the resulting yield. Everything downstream — BoM table,
+  // financial KPIs, 3D panel count — reads from this one object, guaranteeing
+  // the three views tell one story.
+  const selectedVariant: Variant = {
+    ...selectedBaseVariant,
+    bom: {
+      ...selectedBaseVariant.bom,
+      panels: {
+        ...selectedBaseVariant.bom.panels,
+        count: activePanelCount,
+      },
+    },
+    // Payback scales inversely with expected production — removing a high-yield
+    // panel hurts more than removing a weak one.
+    monthlySavingsEur: Math.round(selectedBaseVariant.monthlySavingsEur * yieldScale),
+    paybackYears:
+      yieldScale > 0
+        ? Math.round((selectedBaseVariant.paybackYears / yieldScale) * 10) / 10
+        : selectedBaseVariant.paybackYears,
+  };
+
+  // Engineer-added BoM lines fold into the displayed total everywhere the
+  // installed price is shown (header, KPIs, ROI, the emailed proposal).
+  const customItemsTotal = customItems.reduce(
+    (sum, item) => sum + (typeof item.eur === "number" ? item.eur : 0),
+    0,
+  );
+  const effectiveTotalEur = selectedVariant.bom.totalEur + customItemsTotal;
 
   const selectedSourceUrls: VariantSourceUrls | undefined =
     liveSizing?.sourceUrls?.[selectedVariant.strategy as Strategy];
 
-  const lines = useMemo(
-    () => bomLines(selectedVariant.bom, selectedSourceUrls),
-    [selectedVariant.bom, selectedSourceUrls],
+  // ---- Sell-ready proposal numbers (client-side, from existing fields) ----
+  // Grid type: read-only from intake when the lead carries it (additive
+  // contract field). Falls back to the German residential default "On-grid".
+  const gridType: GridType =
+    (lead as typeof lead & { intake?: { gridType?: GridType } }).intake?.gridType ??
+    (
+      lead.publicPreview.preferences as typeof lead.publicPreview.preferences & {
+        gridType?: GridType;
+      }
+    ).gridType ??
+    "on_grid";
+  const gridTypeLabel = GRID_TYPE_LABEL[gridType];
+
+  // Building-use + roof-geometry classes are additive intake fields. They may
+  // ride on lead.intake (installer-created manual leads) or on the forwarded
+  // preferences; when neither carries them we render no badge rather than
+  // guessing. Read defensively so legacy residential leads keep working.
+  const leadIntakeExtra = (
+    lead as typeof lead & {
+      intake?: { buildingType?: BuildingType; roofType?: RoofType };
+    }
+  ).intake;
+  const prefsExtra = lead.publicPreview.preferences as typeof lead.publicPreview.preferences & {
+    buildingType?: BuildingType;
+    roofType?: RoofType;
+  };
+  const buildingType: BuildingType | undefined =
+    leadIntakeExtra?.buildingType ?? prefsExtra.buildingType;
+  const roofType: RoofType | undefined = leadIntakeExtra?.roofType ?? prefsExtra.roofType;
+  const buildingTypeLabel = buildingType ? BUILDING_TYPE_LABEL[buildingType] : null;
+  const roofTypeLabel = roofType ? ROOF_TYPE_LABEL[roofType] : null;
+
+  // Engineering parameters: prefer the freshly-recomputed live sizing, fall
+  // back to the sizing snapshot stored on the lead. Absent on residential /
+  // pitched results — the panel is simply not rendered in that case.
+  // Recomputed from whatever segments/panel-count are CURRENTLY active so a
+  // roof-structure edit (liveSegments) or a panel add/remove/shift
+  // (activePanelCount) both flow straight into the Electrical step without
+  // waiting on a fresh /api/roof-facts fetch.
+  const engineering = useMemo(() => {
+    const segments = liveSegments ?? lead.publicPreview.sizing.roofSegments ?? [];
+    const intake = intakeFromLead(lead);
+    if (!commercialEngineeringApplies(intake)) {
+      return liveSizing?.engineering ?? lead.publicPreview.sizing.engineering ?? null;
+    }
+    const baseSizing: SizingResult = liveSizing ?? lead.publicPreview.sizing;
+    const synthetic: SizingResult = {
+      ...baseSizing,
+      panelCount: activePanelCount,
+      roofSegments: segments,
+      systemKwp: Math.round(activePanelCount * PANEL_KWP * 10) / 10,
+    };
+    const eng = computeCommercialEngineering(synthetic, intake);
+    const result: NonNullable<SizingResult["engineering"]> = {
+      tiltDegrees: eng.tiltDegrees,
+      dcAcRatio: eng.dcAcRatio,
+      specificYieldKwhPerKwp: eng.specificYieldKwhPerKwp,
+      performanceRatio: eng.performanceRatio,
+      modulesPerString: eng.modulesPerString,
+      stringCount: eng.stringCount,
+    };
+    if (eng.groundCoverageRatio !== undefined) result.groundCoverageRatio = eng.groundCoverageRatio;
+    if (eng.rowSpacingMeters !== undefined) result.rowSpacingMeters = eng.rowSpacingMeters;
+    return result;
+  }, [liveSegments, liveSizing, activePanelCount, lead]);
+
+  // In MOCK_MODE there are no Google keys / 3D-tile coverage, so the photoreal
+  // Cesium view can't load (it 403s/404s against tile.googleapis.com). Show the
+  // same fully-offline synthetic 3D the homeowner side uses instead of erroring.
+  const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === "true";
+  const prefsBuildingType = (
+    lead.publicPreview.preferences as { buildingType?: string }
+  ).buildingType;
+  const roofVariant: "residential" | "commercial" =
+    prefsBuildingType && prefsBuildingType !== "residential" ? "commercial" : "residential";
+  const syntheticAreaM2 =
+    liveTotalAreaM2 ??
+    lead.publicPreview.sizing.usableRoofAreaM2 ??
+    lead.publicPreview.roofFacts.totalAreaM2 ??
+    undefined;
+
+  // Simple 25-year ROI from existing Variant fields only:
+  // lifetime savings = monthlySavingsEur × 12 × 25, vs the installed total.
+  const lifetimeSavingsEur = selectedVariant.monthlySavingsEur * 12 * 25;
+  const roiPct =
+    effectiveTotalEur > 0
+      ? Math.round(
+          ((lifetimeSavingsEur - effectiveTotalEur) / effectiveTotalEur) * 100,
+        )
+      : 0;
+
+  // Estimated annual yield: prefer the live per-panel sum (respects the
+  // installer's panel edits), then the per-segment allocation sum, then the
+  // sizer's headline yield. All are existing deterministic outputs.
+  const allocationYieldKwh = (liveSizing?.segmentAllocations ?? [])
+    .filter((a) => a.status === "used" && !disabledSegmentIndexes.has(a.index))
+    .reduce((sum, a) => sum + a.yieldKwhPerYear, 0);
+  // When we fall back to a roof-anchored yield (no live per-panel sum, e.g.
+  // MOCK_MODE), scale it to the selected variant's active size so a leaner
+  // pick reports proportionally less generation.
+  const yieldCountScale = leadPanelCount > 0 ? activePanelCount / leadPanelCount : 1;
+  const fallbackYieldKwh =
+    allocationYieldKwh > 0
+      ? allocationYieldKwh
+      : liveSizing?.annualYieldKwh ?? lead.publicPreview.sizing.annualYieldKwh;
+  const estAnnualYieldKwh = Math.round(
+    activeYieldKwh > 0 ? activeYieldKwh : fallbackYieldKwh * yieldCountScale,
   );
 
-  const roofAreaValue =
-    liveTotalAreaM2 ?? lead.publicPreview.roofFacts.totalAreaM2 ?? 0;
-  const pitchValue = livePitchDeg
-    ? Math.round(livePitchDeg)
-    : lead.publicPreview.roofFacts.pitchDeg ?? "—";
+  // Compact per-face placement summary for the design card. The full
+  // toggleable table (SegmentBreakdown) stays in the technical section.
+  const placementSummary = (liveSizing?.segmentAllocations ?? []).filter(
+    (a) => a.status === "used",
+  );
+
+  // KPI display is anchored to the STORED snapshot (lead.publicPreview),
+  // not the live recompute — otherwise a live re-fetch that differs even
+  // slightly from the creation-time snapshot makes the marketplace list card
+  // and this detail view permanently disagree (see Recalculate action below,
+  // which is the only thing allowed to update the stored snapshot). liveSizing
+  // / liveTotalAreaM2 / livePitchDeg remain available for the engineering
+  // panels and recompute logic elsewhere in this file.
+  const roofAreaValue = lead.publicPreview.roofFacts.totalAreaM2 ?? 0;
+  const pitchValue = lead.publicPreview.roofFacts.pitchDeg ?? "—";
   // When the installer toggles panels off, the headline numbers shift to the
   // active count. systemKwp uses the same 0.44 kWp/panel constant the sizer
   // assumes (lib/sizing/calculate.ts: 440 W modules).
   const panelCount = activePanelCount;
   const systemKwp =
     Math.round(activePanelCount * PANEL_KWP * 10) / 10;
-  const segmentsForLayout = liveSizing?.roofSegments ?? lead.publicPreview.sizing.roofSegments;
 
   // ---- AI-prefetched technical brief card data ----
   const briefSegments: RoofSegment[] =
@@ -683,6 +1006,22 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
   const briefRoofArea = Math.round(
     liveTotalAreaM2 ?? lead.publicPreview.roofFacts.totalAreaM2 ?? 0,
   );
+
+  // Seed for the manual roof-structure editor: the live Solar-API segments
+  // when loaded, else a single segment derived from the stored roofFacts
+  // snapshot so the editor is always usable even before/without a live fetch.
+  const roofEditorInitialSegments: RoofSegment[] = useMemo(() => {
+    if (liveSegments && liveSegments.length > 0) return liveSegments;
+    const rf = lead.publicPreview.roofFacts;
+    return [
+      {
+        pitchDegrees: rf.pitchDeg ?? 20,
+        azimuthDegrees: rf.azimuth ?? 180,
+        areaMeters2: rf.totalAreaM2 ?? 30,
+        annualSunshineHours: 1200,
+      },
+    ];
+  }, [liveSegments, lead]);
 
   const acceptLead = async () => {
     setBusy("accept");
@@ -718,7 +1057,7 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
         body: JSON.stringify({
           bom: selectedVariant.bom,
           totalEur: selectedVariant.bom.totalEur,
-          installerNotes: "Installer-verified BoM based on Verdict roof sizing.",
+          installerNotes: "Installer-verified BoM based on HelioSense AI roof sizing.",
         }),
       });
       const data = await res.json();
@@ -763,6 +1102,16 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     return Math.round(sorted[0].pitchDegrees ?? 0);
   }, [liveSegments]);
 
+  // Human-readable array orientation for the technical panel — how the AI
+  // oriented the array (dominant azimuth bucket + degrees). Always available
+  // from the roof segments, even when the commercial engineering block is not.
+  const arrayAzimuthLabel: string | undefined =
+    briefDominant === null
+      ? undefined
+      : briefDominant === "flat"
+        ? "Flat"
+        : `${briefDominant} · ${dominantAzimuthDegrees}°`;
+
   return (
     // Stacked layout: full-width photoreal map on top, dashboard scrolls
     // below. The map gets the user's full screen real estate so they can
@@ -770,36 +1119,122 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
     // for cursor space, then they scroll for the BoM + variant cards.
     // Map height = min(720px, 70vh) so it dominates a typical 1080p laptop
     // screen but doesn't go absurd on a 1440p+ monitor.
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0A0E1A]">
-      <section className="relative h-[min(720px,70vh)] flex-shrink-0 overflow-hidden border-b border-[#2A3038] bg-[#0A0E1A]">
-        <CesiumRoofView
-          coords={{ lat: lead.privateDetails.lat, lng: lead.privateDetails.lng }}
-          address={unlocked ? lead.privateDetails.address : lead.publicPreview.district}
-          onViewerReady={setCesiumViewer}
-        />
-        {/* Headless: attaches/removes panel polygons on the photoreal mesh. */}
-        <PanelOverlayCesium
-          viewer={cesiumViewer}
-          panels={combinedOverlayPanels}
-          desiredCount={combinedOverlayPanels.length}
-          removedKeys={removedPanelKeys}
-          onPanelClick={togglePanel}
-          visible={showPanels}
-          editMode={editMode}
-          onPanelAdd={addManualPanel}
-          defaultAzimuthDegrees={dominantAzimuthDegrees}
-          defaultPitchDegrees={dominantPitchDegrees}
-          roofSegments={overlayRoofSegments}
-        />
-        <SunHeatmapCesium
-          viewer={cesiumViewer}
-          heatmap={heatmapMeta}
-          visible={sunLayerVisible && heatmapStatus === "ready"}
-        />
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[#0A0E1A]">
+      {/* 3D fills the whole dashboard — the roof is the centrepiece. Hidden on
+          the Proposal step so that lighter, 3D-free "sales mode" view can go
+          full-width without the engineering workspace competing for space. */}
+      {activeStep !== "proposal" ? (
+      <section className="relative flex-1 overflow-hidden bg-[#0A0E1A]">
+        {isMock ? (
+          // Offline simulation — no Google tiles, no console error. Shows the
+          // building with the AI panel layout; live photoreal + interactive
+          // panel-editing take over automatically once real keys are set.
+          // While the roof-structure-edit overlay is open, its live preview
+          // (unsaved edits) drives this SAME instance instead of a second one.
+          <SyntheticRoof3D
+            address={lead.publicPreview.district}
+            totalAreaM2={
+              roofEditorOpen && roofEditPreview ? roofEditPreview.totalAreaM2 : syntheticAreaM2
+            }
+            panelCount={
+              roofEditorOpen && roofEditPreview?.panelCount != null
+                ? roofEditPreview.panelCount
+                : panelCount
+            }
+            variant={roofVariant}
+            tiltDegrees={
+              roofEditorOpen && roofEditPreview?.tiltDegrees != null
+                ? roofEditPreview.tiltDegrees
+                : engineering?.tiltDegrees
+            }
+            rowSpacingMeters={
+              roofEditorOpen && roofEditPreview?.rowSpacingMeters != null
+                ? roofEditPreview.rowSpacingMeters
+                : engineering?.rowSpacingMeters
+            }
+          />
+        ) : (
+          <>
+            <CesiumRoofView
+              coords={{ lat: lead.privateDetails.lat, lng: lead.privateDetails.lng }}
+              address={unlocked ? lead.privateDetails.address : lead.publicPreview.district}
+              onViewerReady={setCesiumViewer}
+            />
+            {/* Headless: attaches/removes panel polygons on the photoreal mesh. */}
+            <PanelOverlayCesium
+              viewer={cesiumViewer}
+              panels={combinedOverlayPanels}
+              desiredCount={combinedOverlayPanels.length}
+              removedKeys={removedPanelKeys}
+              onPanelClick={togglePanel}
+              visible={showPanels}
+              editMode={editMode}
+              onPanelAdd={addManualPanel}
+              defaultAzimuthDegrees={dominantAzimuthDegrees}
+              defaultPitchDegrees={dominantPitchDegrees}
+              roofSegments={overlayRoofSegments}
+            />
+            <SunHeatmapCesium
+              viewer={cesiumViewer}
+              heatmap={heatmapMeta}
+              visible={sunLayerVisible && heatmapStatus === "ready"}
+            />
+          </>
+        )}
         <div className="pointer-events-none absolute left-4 top-4 rounded-md border border-[#2A3038] bg-[#0A0E1A]/80 px-3 py-2 text-xs backdrop-blur">
           <div className="font-semibold text-[#F7F8FA]">{lead.publicPreview.district}</div>
           <div className="mt-0.5 text-[#9BA3AF]">Exact rooftop model · customer details gated</div>
         </div>
+
+        {/* Roof-structure-edit toggle: bottom-left, next to (but visually
+            separate from) the panel-edit toolbar. Only meaningful in the
+            offline synthetic 3D — Cesium's photoreal tiles have no
+            addressable per-segment mesh to reshape. */}
+        <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <button
+            type="button"
+            onClick={() => isMock && setRoofEditorOpen((v) => !v)}
+            disabled={!isMock}
+            title={
+              !isMock
+                ? "Structure editing needs the simulated 3D view — not available on live photoreal data."
+                : undefined
+            }
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium backdrop-blur transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+              roofEditorOpen
+                ? "border-[#3DAEFF] bg-[#3DAEFF]/15 text-[#3DAEFF] hover:bg-[#3DAEFF]/25"
+                : "border-[#3DAEFF]/40 bg-[#0A0E1A]/85 text-[#F7F8FA] hover:border-[#3DAEFF]"
+            }`}
+            aria-pressed={roofEditorOpen}
+          >
+            <Layers size={12} />
+            {roofEditorOpen ? "Close roof editor" : "Edit roof structure"}
+          </button>
+          {!isMock ? (
+            <span className="max-w-[220px] rounded-md border border-[#2A3038] bg-[#0A0E1A]/85 px-2.5 py-1.5 text-[10px] leading-snug text-[#9BA3AF] backdrop-blur">
+              Structure editing needs the simulated 3D view — not available on live photoreal data.
+            </span>
+          ) : null}
+        </div>
+
+        {/* Roof-structure editor overlay — floats over the main 3D pane and
+            drives that SAME instance's preview (via roofEditPreview) instead
+            of embedding a second SyntheticRoof3D. */}
+        {roofEditorOpen && isMock ? (
+          <div className="absolute left-4 top-20 z-30 max-h-[calc(100%-6rem)] w-[380px] max-w-[calc(100%-2rem)] overflow-y-auto">
+            <RoofStructureEditor
+              key={`${lead.id}-${liveSegments ? "live" : "seed"}`}
+              lead={lead}
+              intake={intakeFromLead(lead)}
+              initialSegments={roofEditorInitialSegments}
+              onLeadChange={onLeadChange}
+              onPreviewChange={setRoofEditPreview}
+              onApplied={handleStructureApplied}
+              onClose={() => setRoofEditorOpen(false)}
+            />
+          </div>
+        ) : null}
+
         {/* Panel-edit toolbar: bottom-right so it does not cover the
             dimensions disclosure/camera controls in the top-right corner. */}
         {(solarPanels.length > 0 || manuallyAddedPanels.length > 0) ? (
@@ -862,9 +1297,379 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
           </div>
         ) : null}
       </section>
+      ) : null}
 
-      <section className="flex flex-1 flex-col gap-5 overflow-y-auto p-5 xl:p-6">
-        <div className="flex flex-col gap-5">
+      {/* Slide-over toggle — always on top so the installer can collapse the
+          proposal and inspect the roof full-screen. Hidden on the Proposal
+          step since the 3D pane isn't rendered there — nothing to reveal. */}
+      {activeStep !== "proposal" ? (
+        <button
+          type="button"
+          onClick={() => setDrawerOpen((v) => !v)}
+          aria-expanded={drawerOpen}
+          className="absolute right-3 top-3 z-40 flex items-center gap-1.5 rounded-md border border-[#2A3038] bg-[#0A0E1A]/85 px-2.5 py-1.5 text-[11px] font-medium text-[#F7F8FA] backdrop-blur transition-colors hover:border-[#3DAEFF]/50"
+        >
+          {drawerOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          {drawerOpen ? "Hide" : "Proposal"}
+        </button>
+      ) : null}
+
+      {/* Proposal slide-over — deal flow, design, financials, BoM, engineering,
+          customer + actions. Slides off-screen when collapsed so the 3D roof
+          gets the full canvas. On the Proposal step it drops its width cap
+          and becomes a full-width "sales mode" page with no 3D distraction. */}
+      <aside
+        className={`absolute right-0 top-0 z-20 flex h-full w-full flex-col overflow-hidden border-l border-[#2A3038] bg-[#0A0E1A]/95 backdrop-blur transition-transform duration-300 ${
+          activeStep === "proposal" ? "" : "max-w-[620px]"
+        } ${
+          drawerOpen || activeStep === "proposal" ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+
+      {/* Design-workflow tab bar — a real, freely-jumpable step nav (not a
+          gated wizard). Deal STATUS (unlocked / offer_sent) is a separate axis
+          from this design-workflow step and is shown where it already was —
+          the "Unlocked at …" pill in Customer details. */}
+      {(() => {
+        const steps: Array<{ id: InstallerStep; label: string }> = [
+          { id: "design", label: "Design" },
+          { id: "electrical", label: "Electrical" },
+          { id: "bom", label: "BoM & Pricing" },
+          { id: "proposal", label: "Proposal" },
+        ];
+        return (
+          <nav
+            aria-label="Design workflow"
+            className="flex-shrink-0 border-b border-[#2A3038] bg-[#0A0E1A] px-5 py-3 xl:px-6"
+          >
+            <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
+              {steps.map((step, i) => {
+                const active = activeStep === step.id;
+                return (
+                  <Fragment key={step.id}>
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep(step.id)}
+                        aria-current={active ? "step" : undefined}
+                        className="flex items-center gap-2"
+                      >
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold tabular-nums transition-colors ${
+                            active
+                              ? "border-[#3DAEFF] bg-[#3DAEFF] text-[#0A0E1A]"
+                              : "border-[#2A3038] bg-[#12161C] text-[#9BA3AF] hover:border-[#3DAEFF]/50"
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <span
+                          className={`text-xs font-medium transition-colors ${
+                            active ? "text-[#F7F8FA]" : "text-[#9BA3AF] hover:text-[#F7F8FA]"
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                      </button>
+                    </li>
+                    {i < steps.length - 1 ? (
+                      <ArrowRight size={14} className="text-[#2A3038]" aria-hidden />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </ol>
+          </nav>
+        );
+      })()}
+
+      <section className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
+        {activeStep === "design" ? (
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* 1 · System design summary — the headline an installer reads to a
+              customer: size, hardware, yield, grid type, roof faces. */}
+          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-[#F7F8FA]">System design</h2>
+                <span className="rounded-md border border-[#3DAEFF]/40 bg-[#3DAEFF]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#3DAEFF]">
+                  {gridTypeLabel}
+                </span>
+                {buildingTypeLabel ? (
+                  <span className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#9BA3AF]">
+                    {buildingTypeLabel}
+                  </span>
+                ) : null}
+                {roofTypeLabel ? (
+                  <span className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#9BA3AF]">
+                    {roofTypeLabel}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#5B6470]">
+                {liveLoading ? (
+                  <>
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#3DAEFF]" />
+                    Recomputing live
+                  </>
+                ) : liveError ? (
+                  <span className="text-[#5B6470]">Using cached sizing</span>
+                ) : liveSource === "live" ? (
+                  <span className="text-[#62E6A7]">Live Solar API</span>
+                ) : (
+                  <span className="text-[#F2B84B]">
+                    {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
+                  </span>
+                )}
+                {recalcNotice ? (
+                  <span
+                    className={
+                      recalcNotice === "Updated" ? "text-[#62E6A7] normal-case" : "text-[#F2B84B] normal-case"
+                    }
+                  >
+                    {recalcNotice}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={recalculate}
+                  disabled={recalcBusy}
+                  title="Re-measure the roof and refresh the numbers shown here and on the lead list card"
+                  className="flex items-center gap-1 rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-[#9BA3AF] transition-colors hover:border-[#3DAEFF]/50 hover:text-[#F7F8FA] disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw size={11} className={recalcBusy ? "animate-spin" : undefined} />
+                  Recalculate
+                </button>
+              </div>
+            </div>
+
+            <p className="text-sm leading-snug text-[#9BA3AF]">
+              <span className="font-semibold text-[#F7F8FA]">{systemKwp} kWp</span> ·{" "}
+              {panelCount} × {selectedVariant.bom.panels.brand}{" "}
+              {selectedVariant.bom.panels.model} ({selectedVariant.bom.panels.wp} Wp)
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+              {[
+                { label: "System size", value: `${systemKwp} kWp` },
+                {
+                  label: "Panels",
+                  value: `${panelCount} × ${selectedVariant.bom.panels.wp} Wp`,
+                },
+                {
+                  label: "Est. annual yield",
+                  value: `${estAnnualYieldKwh.toLocaleString()} kWh`,
+                },
+                { label: "Roof", value: `${Math.round(roofAreaValue)} m² · ${pitchValue}°` },
+              ].map((kpi) => (
+                <div
+                  key={kpi.label}
+                  className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-1.5"
+                >
+                  <div className="text-[9px] uppercase tracking-wider text-[#5B6470]">
+                    {kpi.label}
+                  </div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#F7F8FA]">
+                    {kpi.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {placementSummary.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="uppercase tracking-wider text-[#5B6470]">Placement</span>
+                {placementSummary.map((row) => {
+                  const off = disabledSegmentIndexes.has(row.index);
+                  return (
+                    <span
+                      key={row.index}
+                      className={`rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-0.5 tabular-nums ${
+                        off ? "text-[#5B6470] line-through" : "text-[#F7F8FA]"
+                      }`}
+                    >
+                      {row.azimuthBucket === "flat" ? "Flat" : row.azimuthBucket}{" "}
+                      {Math.round(row.azimuthDegrees)}° · {row.panelsAllocated} panels
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+        </div>
+        ) : null}
+
+        {activeStep === "proposal" ? (
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* 2 · Financial proposal — the selling numbers for the selected
+              strategy, computed client-side from existing Variant fields. */}
+          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-[#F7F8FA]">Financial proposal</h2>
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
+                  €{effectiveTotalEur.toLocaleString()}
+                </span>
+                {/* Email the proposal — opens the installer's mail client with a
+                    prefilled summary (mailto, no backend). Installer adds the
+                    recipient and clicks send. */}
+                <a
+                  href={`mailto:?subject=${encodeURIComponent(
+                    `Solar proposal — ${panelCount} panels, €${effectiveTotalEur.toLocaleString()}`,
+                  )}&body=${encodeURIComponent(
+                    `AI-engineered solar proposal (${selectedVariant.label}):\n\n` +
+                      `• System: ${panelCount} × ${selectedVariant.bom.panels.wp} Wp ${selectedVariant.bom.panels.brand} ${selectedVariant.bom.panels.model}\n` +
+                      `• Total price: €${effectiveTotalEur.toLocaleString()}\n` +
+                      `• Monthly savings: €${selectedVariant.monthlySavingsEur.toLocaleString()}\n` +
+                      `• Payback: ${selectedVariant.paybackYears} years\n` +
+                      `• 25-year ROI: ${roiPct >= 0 ? "+" : ""}${roiPct}%\n\n` +
+                      `Prepared with HelioSense AI.`,
+                  )}`}
+                  className="rounded-md border border-[#2A3038] px-2.5 py-1 text-[11px] font-medium text-[#9BA3AF] transition-colors hover:border-[#3DAEFF]/50 hover:text-[#F7F8FA]"
+                >
+                  Email proposal
+                </a>
+              </div>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              {variants.map((variant) => (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => setSelectedVariantId(variant.id)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    variant.id === selectedVariant.id
+                      ? "border-[#3DAEFF] bg-[#3DAEFF]/10"
+                      : "border-[#2A3038] bg-[#0A0E1A] hover:border-[#3DAEFF]/50"
+                  }`}
+                >
+                  <div className="text-sm font-semibold text-[#F7F8FA]">{variant.label}</div>
+                  <div className="mt-0.5 text-[11px] tabular-nums text-[#5B6470]">
+                    {variant.bom.panels.count} panels · €{variant.bom.totalEur.toLocaleString()}
+                  </div>
+                  <div className="mt-1 text-xs text-[#9BA3AF]">
+                    €{variant.monthlySavingsEur}/mo · {variant.paybackYears} yrs
+                  </div>
+                  <div className="mt-2 text-[11px] text-[#5B6470]">
+                    {variant.marginPct}% margin · {variant.winRatePct}% win
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Performance / savings — the two metrics the owner cares about,
+                straight from the selected Variant. */}
+            {selectedBaseVariant.consumptionOffsetPct != null ||
+            selectedBaseVariant.selfConsumptionPct != null ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {selectedBaseVariant.consumptionOffsetPct != null ? (
+                  <div className="rounded-md border border-[#3DAEFF]/30 bg-[#3DAEFF]/5 px-3 py-2.5">
+                    <div className="text-lg font-semibold tabular-nums text-[#3DAEFF]">
+                      {selectedBaseVariant.consumptionOffsetPct}%
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#9BA3AF]">
+                      Offsets {selectedBaseVariant.consumptionOffsetPct}% of annual consumption
+                    </div>
+                  </div>
+                ) : null}
+                {selectedBaseVariant.selfConsumptionPct != null ? (
+                  <div className="rounded-md border border-[#62E6A7]/30 bg-[#62E6A7]/5 px-3 py-2.5">
+                    <div className="text-lg font-semibold tabular-nums text-[#62E6A7]">
+                      {selectedBaseVariant.selfConsumptionPct}%
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#9BA3AF]">
+                      {selectedBaseVariant.selfConsumptionPct}% self-consumed (rest exported)
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+              {[
+                {
+                  label: "Total price",
+                  value: `€${effectiveTotalEur.toLocaleString()}`,
+                },
+                {
+                  label: "Monthly savings",
+                  value: `€${selectedVariant.monthlySavingsEur.toLocaleString()}/mo`,
+                },
+                { label: "Payback", value: `${selectedVariant.paybackYears} yrs` },
+                { label: "25-yr ROI", value: `${roiPct >= 0 ? "+" : ""}${roiPct}%` },
+                { label: "Margin", value: `${selectedVariant.marginPct}%` },
+                { label: "Win rate", value: `${selectedVariant.winRatePct}%` },
+              ].map((kpi) => (
+                <div
+                  key={kpi.label}
+                  className="rounded-md border border-[#2A3038] bg-[#0A0E1A] px-2 py-1.5"
+                >
+                  <div className="text-[9px] uppercase tracking-wider text-[#5B6470]">
+                    {kpi.label}
+                  </div>
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#F7F8FA]">
+                    {kpi.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-2 text-[11px] leading-snug text-[#5B6470]">
+              25-yr ROI compares €{selectedVariant.monthlySavingsEur.toLocaleString()}/mo × 12
+              × 25 (€{lifetimeSavingsEur.toLocaleString()} lifetime savings) against the
+              installed total.
+            </p>
+
+            {/* Active-panel status. Lives under the metrics so the installer
+                immediately sees the consequence of removing a panel — €/mo
+                and payback above also update via the yield scale. */}
+            {sizerPanelCount > 0 || manuallyAddedPanels.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#5B6470]">
+                <span>
+                  <span className="text-[#3DAEFF] tabular-nums">AI {sizerPanelCount}</span>
+                  {manuallyAddedPanels.length > 0 ? (
+                    <span className="text-[#62E6A7] tabular-nums"> · +{manuallyAddedPanels.length} manual</span>
+                  ) : null}
+                  {removedPanelKeys.size > 0 ? (
+                    <span className="text-[#F2B84B] tabular-nums"> · −{removedPanelKeys.size} removed</span>
+                  ) : null}
+                </span>
+                <span className="text-[#F7F8FA]">
+                  = <span className="tabular-nums">{activePanelCount}</span> active
+                </span>
+                <span>· Click roof in 3D view to add/remove.</span>
+              </div>
+            ) : null}
+          </section>
+        </div>
+        ) : null}
+
+        {activeStep === "bom" ? (
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* 3 · Full bill of materials for the selected variant, with the
+              engineer's "+ Add item" affordance for extra battery / heat pump /
+              wiring lines. */}
+          <BillOfMaterials
+            bom={selectedVariant.bom}
+            sourceUrls={selectedSourceUrls}
+            customItems={customItems}
+            onAddCustomItem={addCustomItem}
+            onRemoveCustomItem={removeCustomItem}
+          />
+
+          {/* Tavily / market-catalog attribution badge */}
+          {liveSizing?.catalogScrapedAt ? (
+            <div className="rounded-md border border-[#2A3038] bg-[#12161C] px-3 py-2 text-[11px] text-[#9BA3AF]">
+              Live market — scraped{" "}
+              <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>
+            </div>
+          ) : null}
+        </div>
+        ) : null}
+
+        {activeStep === "design" ? (
+        <div className="flex min-w-0 flex-col gap-5">
           {/* AI-prefetched technical brief card */}
           <section className="rounded-lg border border-[#3DAEFF]/30 bg-gradient-to-br from-[#12161C] to-[#0A0E1A] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -882,8 +1687,12 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                   </>
                 ) : liveError ? (
                   <span className="text-[#5B6470]">Using cached brief</span>
-                ) : (
+                ) : liveSource === "live" ? (
                   <span className="text-[#62E6A7]">Live Solar API</span>
+                ) : (
+                  <span className="text-[#F2B84B]">
+                    {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
+                  </span>
                 )}
               </div>
             </div>
@@ -920,8 +1729,12 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
                 </>
               ) : liveError ? (
                 <span className="text-[#5B6470]">Using cached sizing</span>
-              ) : (
+              ) : liveSource === "live" ? (
                 <span className="text-[#62E6A7]">Live Solar API</span>
+              ) : (
+                <span className="text-[#F2B84B]">
+                  {liveSource === "mock" ? "Simulated Solar data" : "Cached Solar data"}
+                </span>
               )}
             </div>
           </div>
@@ -940,96 +1753,49 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
             ))}
           </div>
 
-          <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
-                AI-recommended BoM
-              </h2>
-              <span className="text-lg font-semibold tabular-nums text-[#F7F8FA]">
-                €{selectedVariant.bom.totalEur.toLocaleString()}
-              </span>
-            </div>
-            <div className="grid gap-2 md:grid-cols-3">
-              {variants.map((variant) => (
-                <button
-                  key={variant.id}
-                  type="button"
-                  onClick={() => setSelectedVariantId(variant.id)}
-                  className={`rounded-lg border p-3 text-left transition-colors ${
-                    variant.id === selectedVariant.id
-                      ? "border-[#3DAEFF] bg-[#3DAEFF]/10"
-                      : "border-[#2A3038] bg-[#0A0E1A] hover:border-[#3DAEFF]/50"
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-[#F7F8FA]">{variant.label}</div>
-                  <div className="mt-1 text-xs text-[#9BA3AF]">
-                    €{variant.monthlySavingsEur}/mo · {variant.paybackYears} yrs
-                  </div>
-                  <div className="mt-2 text-[11px] text-[#5B6470]">
-                    {variant.marginPct}% margin · {variant.winRatePct}% win
-                  </div>
-                </button>
-              ))}
-            </div>
+          {liveSizing && (
+            <SegmentBreakdown
+              rows={liveSizing.segmentAllocations ?? []}
+              totalPanels={leadPanelCount}
+              totalSystemKwp={Math.round(leadPanelCount * PANEL_KWP * 10) / 10}
+              mpptStringCount={liveSizing.mpptStringCount ?? 1}
+              disabledSegmentIndexes={disabledSegmentIndexes}
+              onToggleSegment={toggleSegment}
+            />
+          )}
+        </div>
+        ) : null}
 
-            {/* Active-panel status. Lives under the variant cards so the
-                installer immediately sees the consequence of removing a
-                panel — €/mo and payback above also update via panelScale. */}
-            {sizerPanelCount > 0 || manuallyAddedPanels.length > 0 ? (
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#5B6470]">
-                <span>
-                  <span className="text-[#3DAEFF] tabular-nums">AI {sizerPanelCount}</span>
-                  {manuallyAddedPanels.length > 0 ? (
-                    <span className="text-[#62E6A7] tabular-nums"> · +{manuallyAddedPanels.length} manual</span>
-                  ) : null}
-                  {removedPanelKeys.size > 0 ? (
-                    <span className="text-[#F2B84B] tabular-nums"> · −{removedPanelKeys.size} removed</span>
-                  ) : null}
-                </span>
-                <span className="text-[#F7F8FA]">
-                  = <span className="tabular-nums">{activePanelCount}</span> active
-                </span>
-                <span>· Click roof in 3D view to add/remove.</span>
-              </div>
-            ) : null}
-
-            <div className="mt-4 divide-y divide-[#2A3038] rounded-lg border border-[#2A3038] bg-[#0A0E1A]">
-              {lines.map((line) => (
-                <div
-                  key={line.label}
-                  className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
-                >
-                  <span className="text-[11px] uppercase tracking-wider text-[#9BA3AF]">
-                    {line.label}
-                  </span>
-                  <div className="flex flex-col items-start gap-1.5 sm:items-end">
-                    <span className="text-right text-sm text-[#F7F8FA]">{line.value}</span>
-                    {line.sourceUrl ? <SourceUrlChip url={line.sourceUrl} /> : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <PanelLayoutPreview
-            segments={segmentsForLayout}
-            panelCount={selectedVariant.bom.panels.count}
+        {activeStep === "electrical" ? (
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* Engineering parameters — orientation + tilt always render (from the
+              roof segments); the commercial design block (GCR, spacing, strings,
+              DC/AC, specific yield, PR) fills in when the sizer emits it. */}
+          <EngineeringPanel
+            engineering={engineering ?? undefined}
+            azimuthLabel={arrayAzimuthLabel}
+            tiltFallbackDegrees={typeof livePitchDeg === "number" ? livePitchDeg : undefined}
+            climate={liveSizing?.climate ?? lead.publicPreview.sizing.climate}
           />
 
-          {/* Tavily / market-catalog attribution badge */}
-          {liveSizing?.catalogScrapedAt ? (
-            <div className="rounded-md border border-[#2A3038] bg-[#12161C] px-3 py-2 text-[11px] text-[#9BA3AF]">
-              Live German solar market — scraped{" "}
-              <span className="text-[#F7F8FA]">{relativeTime(liveSizing.catalogScrapedAt)}</span>{" "}
-              via Tavily
-              {liveSizing.catalogSource ? (
-                <span className="text-[#5B6470]"> ({liveSizing.catalogSource})</span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+          {/* Electrical design — residential string sizing (computed
+              client-side when the sizer's commercial engineering block is
+              absent) plus a wire-gauge / voltage-drop estimate for either
+              case. Display only; never feeds sizeQuote()'s output. */}
+          <ElectricalDesignPanel
+            sizing={liveSizing ?? lead.publicPreview.sizing}
+            intake={intakeFromLead(lead)}
+          />
 
-        <aside className="flex flex-col gap-4">
+          {/* Permit-ready single-line diagram — deterministic electrical
+              schematic built from the selected variant's BoM + the sizer's
+              engineering block (string layout, inverter rating, storage). */}
+          <SingleLineDiagram bom={selectedVariant.bom} engineering={engineering} />
+        </div>
+        ) : null}
+
+        {activeStep === "proposal" ? (
+        <aside className="flex min-w-0 flex-col gap-4">
           <section className="rounded-lg border border-[#2A3038] bg-[#12161C] p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#9BA3AF]">
@@ -1130,18 +1896,10 @@ export function InstallerLeadDetail({ lead, onLeadChange }: Props) {
 
             {notice ? <div className="mt-3 text-xs text-[#9BA3AF]">{notice}</div> : null}
           </section>
-          {liveSizing && (
-            <SegmentBreakdown
-              rows={liveSizing.segmentAllocations ?? []}
-              totalPanels={liveSizing.panelCount}
-              totalSystemKwp={liveSizing.systemKwp}
-              mpptStringCount={liveSizing.mpptStringCount ?? 1}
-              disabledSegmentIndexes={disabledSegmentIndexes}
-              onToggleSegment={toggleSegment}
-            />
-          )}
         </aside>
+        ) : null}
       </section>
+      </aside>
     </div>
   );
 }

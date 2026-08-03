@@ -3,6 +3,16 @@ import { z } from "zod";
 export const HeatingSchema = z.enum(["gas", "oil", "district", "heat_pump", "electric"]);
 export const GoalSchema = z.enum(["lower_bill", "independence"]);
 export const StrategySchema = z.enum(["margin", "closeRate", "ltv"]);
+export const GridTypeSchema = z.enum(["on_grid", "off_grid", "hybrid"]);
+export const BuildingTypeSchema = z.enum([
+  "residential",
+  "office",
+  "retail",
+  "warehouse",
+  "industrial",
+  "agricultural",
+]);
+export const RoofTypeSchema = z.enum(["pitched", "flat"]);
 
 export const IntakeSchema = z.object({
   address: z.string().min(1),
@@ -11,6 +21,11 @@ export const IntakeSchema = z.object({
   monthlyBillEur: z.number().positive(),
   annualKwh: z.number().positive().optional(),
   ev: z.boolean(),
+  gridType: GridTypeSchema.optional(),
+  buildingType: BuildingTypeSchema.optional(),
+  country: z.string().optional(),
+  roofType: RoofTypeSchema.optional(),
+  peakDemandKw: z.number().positive().optional(),
   heating: HeatingSchema,
   goal: GoalSchema,
 });
@@ -42,6 +57,11 @@ export const BomSchema = z.object({
     model: z.string(),
     kw: z.number().positive(),
   }).optional(),
+  balanceOfSystem: z.array(z.object({
+    item: z.string(),
+    detail: z.string().optional(),
+    eur: z.number().nonnegative().optional(),
+  })).optional(),
   totalEur: z.number().nonnegative(),
 });
 
@@ -57,6 +77,8 @@ export const VariantSchema = z.object({
   confidence: z.number().min(0).max(1),
   citedProjectIds: z.array(z.string()).length(3),
   objection: z.string(),
+  consumptionOffsetPct: z.number().optional(),
+  selfConsumptionPct: z.number().optional(),
 });
 
 export const RoofSegmentSchema = z.object({
@@ -81,6 +103,29 @@ export const SizingResultSchema = z.object({
     pass: z.boolean(),
     message: z.string(),
   })),
+  engineering: z.object({
+    groundCoverageRatio: z.number().optional(),
+    rowSpacingMeters: z.number().optional(),
+    tiltDegrees: z.number().optional(),
+    dcAcRatio: z.number().optional(),
+    specificYieldKwhPerKwp: z.number().optional(),
+    performanceRatio: z.number().optional(),
+    modulesPerString: z.number().optional(),
+    stringCount: z.number().optional(),
+    residentialStringVocCold: z.number().optional(),
+    residentialModulesPerString: z.number().optional(),
+    residentialStringCount: z.number().optional(),
+    residentialWithinMpptWindow: z.boolean().optional(),
+    voltageDropPercent: z.number().optional(),
+    wireGaugeMm2: z.number().optional(),
+  }).optional(),
+  climate: z.object({
+    country: z.string(),
+    grossKwhPerKwp: z.number(),
+    soilingLossPct: z.number(),
+    temperatureLossPct: z.number(),
+    netSpecificYieldKwhPerKwp: z.number(),
+  }).optional(),
   variants: z.tuple([VariantSchema, VariantSchema, VariantSchema]),
 });
 

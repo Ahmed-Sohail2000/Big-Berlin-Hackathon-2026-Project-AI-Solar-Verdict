@@ -96,4 +96,10 @@ tmp/
 .cache/
 coverage/
 test-results/
+playwright-report/
 .vercel
+
+# ---------------------------------------------------------------
+# Smoke-test output (scripts/smoke-test.mjs, run-verdict skill)
+# ---------------------------------------------------------------
+screenshot-*.png

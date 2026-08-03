@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { Send, Check } from "lucide-react";
-import type { Goal, Heating, Preference, RoofSegment } from "@/lib/contracts";
+import type {
+  BuildingType,
+  Goal,
+  GridType,
+  Heating,
+  Preference,
+  RoofSegment,
+  RoofType,
+} from "@/lib/contracts";
 
 interface Props {
   address: string;
@@ -17,6 +25,16 @@ interface Props {
     wantsBattery?: Preference;
     /** Three-state heat pump preference (new homeowner UI). */
     wantsHeatPump?: Preference;
+    /** Grid connection type (new homeowner UI). */
+    gridType?: GridType;
+    /** Commercial building use class (commercial intake). */
+    buildingType?: BuildingType;
+    /** ISO-3166 code / free-text country for tariff/market context. */
+    country?: string;
+    /** Roof geometry class (commercial intake). */
+    roofType?: RoofType;
+    /** Optional commercial peak demand in kW. */
+    peakDemandKw?: number;
     heating: Heating;
     goal: Goal;
   };
@@ -39,13 +57,13 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
     // tab between submissions.
     let voiceNote: { audioDataUrl: string; transcript?: string; durationMs?: number } | undefined;
     try {
-      const raw = window.sessionStorage.getItem("verdict.pendingVoiceMemo");
+      const raw = window.sessionStorage.getItem("heliosense.pendingVoiceMemo");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.audioDataUrl === "string") {
           voiceNote = parsed;
         }
-        window.sessionStorage.removeItem("verdict.pendingVoiceMemo");
+        window.sessionStorage.removeItem("heliosense.pendingVoiceMemo");
       }
     } catch {
       // ignore — sessionStorage absent or quota issues
@@ -66,6 +84,11 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
           evPref: intake.evPref,
           wantsBattery: intake.wantsBattery,
           wantsHeatPump: intake.wantsHeatPump,
+          gridType: intake.gridType,
+          buildingType: intake.buildingType,
+          country: intake.country,
+          roofType: intake.roofType,
+          peakDemandKw: intake.peakDemandKw,
           heating: intake.heating,
           goal: intake.goal,
           roofSegments,
@@ -77,7 +100,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
         throw new Error(`Lead POST failed with status ${res.status}`);
       }
 
-      window.localStorage.setItem("verdict.lastLeadId", nextLeadId);
+      window.localStorage.setItem("heliosense.lastLeadId", nextLeadId);
       setLeadId(nextLeadId);
       setState("sent");
     } catch (err) {
@@ -94,7 +117,7 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
           <Check size={28} className="text-[#62E6A7]" strokeWidth={3} />
         </div>
         <div>
-          <h3 className="text-lg font-semibold">Verdict sent</h3>
+          <h3 className="text-lg font-semibold">HelioSense AI sent</h3>
           <p className="text-sm text-[#9BA3AF] mt-1">
             Berlin Solar Pro will review your proposal. We&rsquo;ll notify you within 24 hours.
           </p>
@@ -115,11 +138,11 @@ export function SendToInstaller({ address, coords, intake, roofSegments }: Props
         {state === "sending" ? (
           <>
             <span className="inline-block h-4 w-4 rounded-md border-2 border-[#0A0E1A]/30 border-t-[#0A0E1A] animate-spin" />
-            Sending Verdict packet...
+            Sending HelioSense AI packet...
           </>
         ) : (
           <>
-            <Send size={16} /> Send to a certified Reonic installer
+            <Send size={16} /> Send to a certified solar installer
           </>
         )}
       </button>

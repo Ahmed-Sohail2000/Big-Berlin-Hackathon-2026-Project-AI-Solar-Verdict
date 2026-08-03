@@ -25,9 +25,24 @@
   --font-sans: var(--font-inter);
 }
 
+html {
+  scroll-behavior: smooth;
+  /* Anchor jumps land below the 4rem sticky nav instead of under it. */
+  scroll-padding-top: 4.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Stop scroll "chaining" into the page from inside the embedded 3D / scroll
+     panes, so up/down scrolling stays smooth and predictable. */
+  overscroll-behavior-y: none;
 }

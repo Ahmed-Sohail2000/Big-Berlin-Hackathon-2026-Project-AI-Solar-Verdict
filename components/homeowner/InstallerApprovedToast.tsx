@@ -24,7 +24,7 @@ export function InstallerApprovedToast() {
 
   useEffect(() => {
     let cancelled = false;
-    const leadId = window.localStorage.getItem("verdict.lastLeadId") ?? FALLBACK_LEAD_ID;
+    const leadId = window.localStorage.getItem("heliosense.lastLeadId") ?? FALLBACK_LEAD_ID;
 
     const tick = async () => {
       if (cancelled) return;
@@ -56,7 +56,7 @@ export function InstallerApprovedToast() {
           <div className="flex items-center gap-2">
             <Bell size={14} className="text-[#62E6A7]" />
             <span className="text-xs font-semibold uppercase tracking-wider text-[#62E6A7]">
-              Your Verdict has been finalized
+              Your HelioSense AI proposal has been finalized
             </span>
           </div>
           <button

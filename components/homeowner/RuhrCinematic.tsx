@@ -53,7 +53,7 @@ export function RuhrCinematic() {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-md bg-[#3DAEFF] opacity-60" />
           <span className="relative inline-flex h-2 w-2 rounded-md bg-[#3DAEFF]" />
         </span>
-        Cm-precision drone scan · Reonic Ruhr dataset
+        Cm-precision 3D roof scan
       </div>
     </div>
   );

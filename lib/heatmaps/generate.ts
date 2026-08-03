@@ -2,7 +2,7 @@
  * Runtime heatmap generation. Same logic as scripts/bake-heatmaps.ts but
  * exposed as a function so /api/heatmap can call it on-demand for any address.
  *
- * Cached results land in /tmp/verdict_heatmaps/ so re-fetches are instant.
+ * Cached results land in /tmp/heliosense_heatmaps/ so re-fetches are instant.
  */
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -13,7 +13,7 @@ import sharp from "sharp";
 import { getDataLayers } from "@/lib/api/solar";
 
 const RADIUS_METERS = 50;
-const CACHE_DIR = join(tmpdir(), "verdict_heatmaps");
+const CACHE_DIR = join(tmpdir(), "heliosense_heatmaps");
 const MAX_EDGE_PX = 512;
 const WGS84_A = 6_378_137;
 const WGS84_ECC_SQUARED = 0.00669437999014;

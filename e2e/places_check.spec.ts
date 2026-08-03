@@ -29,7 +29,7 @@ test("Places autocomplete renders + LayerSwitcher works", async ({ page }) => {
   const layerMap = page.getByRole("button", { name: /Map/i });
   console.log(`[layer-switcher] 3D=${await layer3D.isVisible()} Heat=${await layerHeat.isVisible()} Map=${await layerMap.isVisible()}`);
 
-  await page.screenshot({ path: "/tmp/verdict_full_test.png" });
+  await page.screenshot({ path: "/tmp/heliosense_full_test.png" });
 
   console.log(`[errors] ${errors.length} console errors:`);
   for (const e of errors.slice(0, 5)) console.log("  - " + e);

@@ -1,6 +1,8 @@
 # Verdict — Plan
 *Big Berlin Hack 2026 · Reonic track · Submit Sun 14:00*
 
+> (Project renamed from Verdict to HelioSense AI on 2026-08-03. The original hackathon plan and pitch script below are preserved verbatim for historical accuracy.)
+
 > Reonic's installer-DNA quote intelligence layer.
 > **Live Google Solar API + Photorealistic 3D Tiles + Places + Geocoding all confirmed working** (probed 2026-04-25). Strategy: live-first with cached safety harbor.
 
@@ -8,9 +10,9 @@
 
 ## 1. Concept
 
-**Verdict turns Reonic's automated technical plan into the quote an experienced installer would actually sell.** It is *automation + experience-based knowledge* — not "AI" in the marketing sense (Reonic itself never markets AI). Built on Reonic's proprietary 1,277 real projects + 19,257 line items, it predicts which hardware combination will actually get signed. Reonic already automates the layout. Verdict automates the commercial judgment that experienced installers still do by hand.
+**HelioSense AI (originally shipped as Verdict) turns Reonic's automated technical plan into the quote an experienced installer would actually sell.** It is *automation + experience-based knowledge* — not "AI" in the marketing sense (Reonic itself never markets AI). Built on Reonic's proprietary 1,277 real projects + 19,257 line items, it predicts which hardware combination will actually get signed. Reonic already automates the layout. HelioSense AI automates the commercial judgment that experienced installers still do by hand.
 
-## 2. The 5-Minute Pitch (verbatim)
+## 2. The 5-Minute Pitch (verbatim, original hackathon submission — kept as delivered)
 
 > **(0:00 — Hook)** "Reonic already automates the technical plan — the layout, the strings, the inverter sizing, the BoM. What's still done by hand is the *commercial judgment*: which BoM will the customer actually sign, at what margin? Verdict automates that — using your own 1,277 completed projects."
 

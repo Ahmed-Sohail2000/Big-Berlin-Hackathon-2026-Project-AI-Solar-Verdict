@@ -33,7 +33,7 @@ test("Cesium 3D view loads and clips around a Berlin address", async ({ page }) 
 
   // Snapshot the LEFT pane only (the cesium container)
   await page.screenshot({
-    path: "/tmp/verdict_cesium_test.png",
+    path: "/tmp/heliosense_cesium_test.png",
     fullPage: false,
   });
 

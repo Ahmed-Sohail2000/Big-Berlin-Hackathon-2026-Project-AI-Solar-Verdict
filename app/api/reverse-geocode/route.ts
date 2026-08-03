@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { nearestDemoByCoords } from "@/data/fixtures/demo-locations";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,21 @@ export async function GET(req: NextRequest) {
   if (!lat || !lng) {
     return NextResponse.json({ error: "missing lat/lng" }, { status: 400 });
   }
+
+  if (process.env.MOCK_MODE === 'true') {
+    // "Use my location" → snap to the nearest curated demo location.
+    const loc = nearestDemoByCoords(Number(lat), Number(lng));
+    return NextResponse.json({
+      address: loc.label,
+      lat: loc.lat,
+      lng: loc.lng,
+      buildingType: loc.buildingType,
+      classification: loc.classification,
+      roofType: loc.roofType,
+      country: loc.country,
+    });
+  }
+
   if (!key) {
     return NextResponse.json({ error: "server missing GOOGLE_MAPS_API_KEY" }, { status: 500 });
   }

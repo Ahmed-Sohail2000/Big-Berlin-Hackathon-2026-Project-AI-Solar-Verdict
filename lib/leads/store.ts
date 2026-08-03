@@ -6,8 +6,19 @@
  * the same Next.js dev server, so a process-local Map is enough.
  */
 
-import type { BoM, Goal, Heating, Preference, SizingResult, Variant } from "@/lib/contracts";
+import type {
+  BoM,
+  BuildingType,
+  Goal,
+  GridType,
+  Heating,
+  Preference,
+  RoofType,
+  SizingResult,
+  Variant,
+} from "@/lib/contracts";
 import { sizeQuote } from "@/lib/sizing/calculate";
+import { commercialEurPerKwh, isCommercialBuilding } from "@/lib/sizing/commercial-policy";
 import { deterministicBlur } from "@/lib/leads/blur";
 
 export type LeadStatus = "new" | "accepted" | "offer_sent" | "closed";
@@ -24,6 +35,8 @@ export type LeadPublicPreview = {
     segmentsCount?: number;
   };
   sizing: SizingResult;
+  /** Optional live-edited roof segments, synced from the installer detail view. */
+  roofSegments?: SizingResult["roofSegments"];
   bomVariants: Variant[];
   preferences: {
     goal: "lower_bill" | "independent";
@@ -36,6 +49,16 @@ export type LeadPublicPreview = {
     wantsBattery?: Preference;
     /** Three-state heat pump preference forwarded from intake (new flow). */
     wantsHeatPump?: Preference;
+    /** Grid connection type forwarded from intake. Absent = "on_grid". */
+    gridType?: GridType;
+    /** Building use class forwarded from intake. Absent = "residential". */
+    buildingType?: BuildingType;
+    /** ISO-3166 / free-text country forwarded from intake. Absent = "DE". */
+    country?: string;
+    /** Roof geometry class forwarded from intake. */
+    roofType?: RoofType;
+    /** Optional commercial peak demand in kW. */
+    peakDemandKw?: number;
   };
 };
 
@@ -107,6 +130,16 @@ export type CreateLeadInput = {
   wantsBattery?: Preference;
   /** Three-state heat pump preference (new homeowner intake). */
   wantsHeatPump?: Preference;
+  /** Grid connection type (new homeowner intake). Absent = "on_grid". */
+  gridType?: GridType;
+  /** Building use class (commercial intake). Absent = "residential". */
+  buildingType?: BuildingType;
+  /** ISO-3166 / free-text country (commercial intake). Absent = "DE". */
+  country?: string;
+  /** Roof geometry class (commercial intake). */
+  roofType?: RoofType;
+  /** Optional commercial peak demand in kW. */
+  peakDemandKw?: number;
   roofSegments?: SizingResult["roofSegments"];
   acceptedByInstallerId?: string;
   acceptedAt?: string;
@@ -120,11 +153,11 @@ export type CreateLeadInput = {
 };
 
 type StoreGlobal = {
-  __VERDICT_LEAD_STORE__?: Map<string, LeadRecord>;
+  __HELIOSENSE_LEAD_STORE__?: Map<string, LeadRecord>;
 };
 
-const STORE: Map<string, LeadRecord> = (globalThis as StoreGlobal).__VERDICT_LEAD_STORE__ ??
-  ((globalThis as StoreGlobal).__VERDICT_LEAD_STORE__ = new Map());
+const STORE: Map<string, LeadRecord> = (globalThis as StoreGlobal).__HELIOSENSE_LEAD_STORE__ ??
+  ((globalThis as StoreGlobal).__HELIOSENSE_LEAD_STORE__ = new Map());
 
 function normalizeGoal(goal: CreateLeadInput["goal"]): Goal {
   if (goal === "lower_bill") return "lower_bill";
@@ -199,6 +232,11 @@ function bomLinesFromBom(bom: BoM): LeadRecord["finalBom"] {
 }
 
 export function buildLead(input: CreateLeadInput): LeadRecord {
+  // Thread a commercial EUR/kWh override for commercial buildingTypes so
+  // savings use the commercial tariff (labelled DE benchmark) instead of the
+  // residential 0.32 default. Residential leads keep the residential path.
+  const commercial = isCommercialBuilding(input.buildingType);
+  const eurPerKwhOverride = commercial ? commercialEurPerKwh(input.country) : undefined;
   const sizing = sizeQuote(
     {
       address: input.address,
@@ -206,10 +244,16 @@ export function buildLead(input: CreateLeadInput): LeadRecord {
       lng: input.lng,
       monthlyBillEur: input.monthlyBillEur,
       ev: input.ev,
+      gridType: input.gridType,
+      buildingType: input.buildingType,
+      country: input.country,
+      roofType: input.roofType,
+      peakDemandKw: input.peakDemandKw,
       heating: input.heating,
       goal: normalizeGoal(input.goal),
     },
     input.roofSegments ?? defaultSegments(),
+    eurPerKwhOverride,
   );
   const recommended = sizing.variants[1];
   const blurred = deterministicBlur(input.id, input.lat, input.lng);
@@ -238,6 +282,11 @@ export function buildLead(input: CreateLeadInput): LeadRecord {
         evPref: input.evPref,
         wantsBattery: input.wantsBattery,
         wantsHeatPump: input.wantsHeatPump,
+        gridType: input.gridType,
+        buildingType: input.buildingType,
+        country: input.country,
+        roofType: input.roofType,
+        peakDemandKw: input.peakDemandKw,
       },
     },
     privateDetails: {
@@ -282,6 +331,15 @@ export function createLead(input: CreateLeadInput | LeadRecord): LeadRecord {
   const lead = "publicPreview" in input ? input : buildLead(input);
   STORE.set(lead.id, lead);
   return lead;
+}
+
+/**
+ * Remove a lead from the store. Pure w.r.t. inputs (deterministic): returns
+ * true when a lead was present and removed, false when the id was absent.
+ * Lets the installer delete a lead they created or one that was withdrawn.
+ */
+export function deleteLead(id: string): boolean {
+  return STORE.delete(id);
 }
 
 export function acceptLead(
@@ -336,6 +394,45 @@ export function sendOffer(
     installerLogoEmoji: existing.installerLogoEmoji ?? "☀",
     approvedAt: sentAt,
     finalBom: bomLinesFromBom(patch.bom),
+  };
+  STORE.set(id, updated);
+  return updated;
+}
+
+/**
+ * Sync live/edited roof facts, panel count, and roof segments back into a
+ * lead's stored public preview, so the marketplace list and detail view
+ * agree on the same numbers instead of the list showing a stale
+ * creation-time snapshot. Merges roofFacts shallowly (only overwrites keys
+ * present in the patch); leaves other sizing/preview fields untouched.
+ */
+export function updateLeadPreview(
+  id: string,
+  patch: {
+    roofFacts?: Partial<LeadPublicPreview["roofFacts"]>;
+    panelCount?: number;
+    roofSegments?: SizingResult["roofSegments"];
+  },
+): LeadRecord | null {
+  const existing = STORE.get(id);
+  if (!existing) return null;
+  const updated: LeadRecord = {
+    ...existing,
+    publicPreview: {
+      ...existing.publicPreview,
+      roofFacts: {
+        ...existing.publicPreview.roofFacts,
+        ...patch.roofFacts,
+      },
+      sizing:
+        patch.panelCount !== undefined
+          ? {
+              ...existing.publicPreview.sizing,
+              panelCount: patch.panelCount,
+            }
+          : existing.publicPreview.sizing,
+      roofSegments: patch.roofSegments ?? existing.publicPreview.roofSegments,
+    },
   };
   STORE.set(id, updated);
   return updated;
