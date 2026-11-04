@@ -2,6 +2,8 @@
 
 > (Project renamed from Verdict to HelioSense AI on 2026-08-03. Entries below predate the rename and are preserved as-written.)
 
-NEXT: verify the merged branch (landing page + gridType + installer proposal + main's voice memo/sun heatmap) against real API keys and a live deploy, then merge the PR  by Claude Code  (last updated 2026-07-23)
+NEXT: run scripts/tile-accuracy-report.ts on the client's reference photos and test a real HEIC file; tile count feature is on the working tree, uncommitted, see docs/ROOF_TILE_COUNTING.md  by Claude Code  (last updated 2026-11-05)
+
+PREVIOUS: verify the merged branch (landing page + gridType + installer proposal + main's voice memo/sun heatmap) against real API keys and a live deploy, then merge the PR  by Claude Code  (last updated 2026-07-23)
 
 Context: `feature/mock-mode-simulation` now contains three verified workstreams — (1) marketing landing page on `/` (Stitch-derived design, locked tokens) with guided intake (bill period toggle, optional kWh, 3-card grid-connection selector); (2) `gridType` end-to-end (additive optional field on the frozen Intake contract) with a pure off_grid/hybrid battery+hybrid-inverter policy, refreshed 2026 German market catalog, and fully Zod-validated lead/quote routes; (3) proposal-first installer lead detail (BoM table with catalog-derived prices, financial block, deal-flow stepper) — plus `origin/main` merged in (Gradium voice memo intake→installer, Solar API Data Layers sun heatmap, README/audit docs). Merge conflicts resolved in favor of: Zod-validated lead route (voiceNote added to schema), guided intake UI (voice recorder kept), MOCK_MODE early-return + main's cache split in `getDataLayers`. April's 412-line handoff remains in git history. Verified post-merge: tsc clean, lint 0 errors, 46/46 vitest, mock_flow e2e passing offline.

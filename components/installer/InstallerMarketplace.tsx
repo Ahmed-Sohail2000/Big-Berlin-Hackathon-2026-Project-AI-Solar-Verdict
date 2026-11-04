@@ -298,6 +298,12 @@ export function InstallerMarketplace({ initialLeads, mapsApiKey }: Props) {
           <span className="text-xs text-[#9BA3AF]">Lead marketplace</span>
         </div>
         <div className="flex items-center gap-3">
+          <a
+            href="/installer/tile-count"
+            className="rounded-md border border-[#2A3038] bg-[#12161C] px-2 py-1 text-[11px] font-medium text-[#9BA3AF] transition-colors hover:text-[#F7F8FA]"
+          >
+            Roof tile count
+          </a>
           <button
             type="button"
             onClick={toggleExactView}

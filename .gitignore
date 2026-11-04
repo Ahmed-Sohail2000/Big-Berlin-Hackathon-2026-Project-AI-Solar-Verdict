@@ -103,3 +103,6 @@ playwright-report/
 # Smoke-test output (scripts/smoke-test.mjs, run-verdict skill)
 # ---------------------------------------------------------------
 screenshot-*.png
+
+# Client briefing (confidential, not for the repo)
+docs/briefing/
