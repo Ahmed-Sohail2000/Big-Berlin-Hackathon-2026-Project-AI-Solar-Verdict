@@ -3,7 +3,7 @@
 // briefing. Reads a manifest, runs the real pipeline, prints the deviation from
 // the manual count per quality level.
 //
-//   pnpm dlx tsx scripts/tile-accuracy-report.ts <manifest.json>
+//   pnpm accuracy <manifest.json>
 //
 // Manifest paths are relative to the manifest. Keep manifests and photos outside
 // the repo: they are personal data.
@@ -17,7 +17,7 @@ import { countTiles } from "../lib/tile-count/count";
 import { toGray } from "../lib/tile-count/rectify";
 import type { Quad } from "../lib/tile-count/types";
 
-interface ManifestEntry {
+export interface ManifestEntry {
   photo: string;
   quality: "poor" | "acceptable" | "optimal";
   rows: number;
@@ -25,7 +25,7 @@ interface ManifestEntry {
   corners: Quad;
 }
 
-interface Outcome {
+export interface Outcome {
   entry: ManifestEntry;
   rowError: number | null;
   columnError: number | null;
@@ -59,6 +59,15 @@ async function evaluate(entry: ManifestEntry, base: string): Promise<Outcome> {
   };
 }
 
+/** Runs every manifest entry through the real pipeline. Paths are relative to the manifest. */
+export async function evaluateManifest(manifestPath: string): Promise<Outcome[]> {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ManifestEntry[];
+  const base = dirname(resolve(manifestPath));
+  const outcomes: Outcome[] = [];
+  for (const entry of manifest) outcomes.push(await evaluate(entry, base));
+  return outcomes;
+}
+
 function summarise(quality: string, outcomes: Outcome[]) {
   const counted = outcomes.filter((o) => o.rowError !== null && o.columnError !== null);
   const within = (tolerance: number) =>
@@ -78,14 +87,10 @@ function summarise(quality: string, outcomes: Outcome[]) {
 async function main() {
   const manifestPath = process.argv[2];
   if (!manifestPath) {
-    console.error("Usage: pnpm dlx tsx scripts/tile-accuracy-report.ts <manifest.json>");
+    console.error("Usage: pnpm accuracy <manifest.json>");
     process.exit(1);
   }
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ManifestEntry[];
-  const base = dirname(resolve(manifestPath));
-
-  const outcomes: Outcome[] = [];
-  for (const entry of manifest) outcomes.push(await evaluate(entry, base));
+  const outcomes = await evaluateManifest(manifestPath);
 
   for (const quality of ["optimal", "acceptable", "poor"] as const) {
     const group = outcomes.filter((o) => o.entry.quality === quality);
@@ -93,4 +98,4 @@ async function main() {
   }
 }
 
-void main();
+if (process.argv[1]?.endsWith("tile-accuracy-report.ts")) void main();

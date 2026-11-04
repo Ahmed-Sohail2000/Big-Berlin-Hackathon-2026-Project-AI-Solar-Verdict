@@ -5,7 +5,7 @@
 import { applyHomography, computeHomography } from "./homography";
 import type { GrayImage, Point, Quad, RgbaImage } from "./types";
 
-const MAX_RECTIFIED_EDGE = 2000;
+const MAX_RECTIFIED_EDGE = 3200;
 
 export function toGray(image: RgbaImage): GrayImage {
   const { width, height, data } = image;

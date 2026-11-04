@@ -4,6 +4,7 @@
 
 import { computeDimensions } from "./dimensions";
 import { describeObstruction } from "./obstructions";
+import type { LayoutOptions, PanelRecommendation, PanelSpec } from "./panels";
 import type { ConfidenceLevel, Obstruction, Quad, TileSize } from "./types";
 
 export interface TileReport {
@@ -20,6 +21,8 @@ export interface TileReport {
   tileSize: TileSize;
   corners: Quad;
   obstructions: Obstruction[];
+  /** Absent when the employee has not set up a panel recommendation. */
+  panels?: { spec: PanelSpec; layout: LayoutOptions; recommendation: PanelRecommendation };
 }
 
 export function toJson(report: TileReport): string {
@@ -51,6 +54,15 @@ export function toCsv(report: TileReport): string {
     ["confidence", report.confidence],
     ["corrected_by_employee", String(report.correctedByEmployee)],
   ];
+  if (report.panels) {
+    const { spec, recommendation } = report.panels;
+    lines.push(
+      ["panel_model", spec.name],
+      ["panel_count", recommendation.count],
+      ["panel_orientation", recommendation.orientation],
+      ["system_kwp", recommendation.systemKwp],
+    );
+  }
   const table = lines.map((line) => line.map(csvField).join(",")).join("\r\n");
 
   const obstructionHeader = "kind,from_bottom,from_left,width_tiles,height_tiles";
@@ -75,6 +87,14 @@ function latin1Bytes(text: string): Uint8Array {
   return bytes;
 }
 
+function panelLines({ panels }: TileReport): string[] {
+  if (!panels) return [];
+  const { spec, recommendation: r } = panels;
+  return [
+    `Recommended panels: ${r.count} x ${spec.name}, ${r.orientation}, ${r.systemKwp.toFixed(2)} kWp (planning proposal)`,
+  ];
+}
+
 function reportLines(report: TileReport): string[] {
   const d = computeDimensions(report.rows, report.columns, report.tileSize);
   return [
@@ -85,6 +105,7 @@ function reportLines(report: TileReport): string[] {
     `Tile: exposed height ${d.exposedHeightMm} mm, cover width ${d.coverWidthMm} mm`,
     `Confidence: ${report.confidence}${report.correctedByEmployee ? " (count corrected by employee)" : ""}`,
     ...report.obstructions.map((o) => `${o.kind.replace(/_/g, " ")}: ${describeObstruction(o)}`),
+    ...panelLines(report),
     ...report.warnings.map((w) => `Warning: ${w}`),
   ];
 }

@@ -1,40 +1,47 @@
 @import "tailwindcss";
 
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 :root {
-  --background: #0A0E1A;
-  --surface: #12161C;
-  --border: #2A3038;
-  --foreground: #F7F8FA;
-  --muted: #9BA3AF;
-  --accent: #3DAEFF;
-  --success: #62E6A7;
-  --warning: #F2B84B;
-  --danger: #F36262;
+  color-scheme: dark;
+  --background: #0a0e1a;
+  --surface: #12161c;
+  --surface-raised: #1a1f27;
+  --border: #2a3038;
+  --foreground: #f7f8fa;
+  --muted: #9ba3af;
+  --accent: #3daeff;
+  --accent-contrast: #0a0e1a;
+  --success: #62e6a7;
+  --warning: #f2b84b;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --background: #f3f5f8;
+  --surface: #ffffff;
+  --surface-raised: #eaeef3;
+  --border: #d5dbe3;
+  --foreground: #10151e;
+  --muted: #566070;
+  --accent: #0a6fc2;
+  --accent-contrast: #ffffff;
+  --success: #0b7a52;
+  --warning: #8f5a00;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-border: var(--border);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
   --color-success: var(--success);
   --color-warning: var(--warning);
-  --color-danger: var(--danger);
   --font-sans: var(--font-inter);
-}
-
-html {
-  scroll-behavior: smooth;
-  /* Anchor jumps land below the 4rem sticky nav instead of under it. */
-  scroll-padding-top: 4.5rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
 }
 
 body {
@@ -42,7 +49,25 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  /* Stop scroll "chaining" into the page from inside the embedded 3D / scroll
-     panes, so up/down scrolling stays smooth and predictable. */
-  overscroll-behavior-y: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.step-in {
+  animation: step-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
+  .step-in {
+    animation: none;
+  }
 }

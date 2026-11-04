@@ -13,4 +13,4 @@ pnpm lint && pnpm test && pnpm test:e2e
 ## Scope
 - Linter: checks code style and quality.
 - Unit Tests: verifies core logic in `lib/`.
-- E2E Tests: verifies critical user flows via Playwright.
+- E2E Tests: verifies critical user flows via Playwright. Needs a server on localhost:3000.

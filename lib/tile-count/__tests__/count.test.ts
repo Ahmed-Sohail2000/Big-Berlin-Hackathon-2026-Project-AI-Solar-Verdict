@@ -3,7 +3,7 @@ import { countTiles } from "../count";
 import { applyHomography, computeHomography, isValidQuad } from "../homography";
 import { rectangleQuad, rectify, toGray } from "../rectify";
 import type { Quad } from "../types";
-import { photographRoof, renderNoise, renderRoof } from "./synthetic-roof";
+import { photographRoof, renderNoise, renderRoof } from "../synthetic-roof";
 
 /** Oblique view from below: the eave is wide, the ridge narrow and foreshortened. */
 const OBLIQUE: Quad = [

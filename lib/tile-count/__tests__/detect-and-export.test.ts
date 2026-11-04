@@ -6,7 +6,7 @@ import { describeObstruction, proposeObstructions, validateObstruction } from ".
 import { rectangleQuad } from "../rectify";
 import type { Obstruction, Quad } from "../types";
 import { checkUpload, MAX_UPLOAD_BYTES, sniffPhotoFormat } from "../upload";
-import { colourScene, renderRoof } from "./synthetic-roof";
+import { colourScene, renderRoof } from "../synthetic-roof";
 
 const REPORT: TileReport = {
   caseReference: "Case 123",
