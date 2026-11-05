@@ -37,6 +37,11 @@ mandatory the moment server storage is added.
 - **Guessing:** 10 failed logins lock that client out for 15 minutes. State is per
   process. The host's proxy must overwrite `x-forwarded-for`, or a guesser could
   rotate it.
+- **Language cookie:** the only cookie. It holds `de` or `en` for one year, so the
+  server can render the chosen language. Any other value is ignored. It says nothing
+  about a person or a customer, but the data protection officer should list it.
+- **Home page:** sits behind the same login as the tool. A public page would need a
+  change to `middleware.ts`, an imprint and a privacy notice.
 - **Logs:** failed logins log an event name only, with no address or username.
 - **Browser policy:** `connect-src 'self' blob:`, `img-src` and `form-action 'none'`
   block requests, image beacons and forms to other hosts. Browsers do not let a CSP
@@ -61,6 +66,22 @@ mandatory the moment server storage is added.
   worker with the same no-network policy.
 - **One shared password.** No 2FA, SSO, roles or per-person access log, which §7 wants.
 - **The lockout resets on restart** and does not span several server instances.
+
+## Protecting `main`
+
+`.github/workflows/ci.yml` runs lint, types, unit tests, the dependency audit and the
+build on every pull request, and needs no secrets. `.github/rulesets/protect-main.json`
+requires a pull request with that check passing, and blocks force-pushes and deleting
+`main`. It has no bypass, so it binds the owner too. Approvals are set to 0 because a
+single owner cannot approve their own pull request; raise it once a second reviewer
+has write access.
+
+A file in the repo does not protect anything by itself. An owner applies the ruleset:
+
+```bash
+gh auth login
+gh api -X POST repos/Ahmed-Sohail2000/Big-Berlin-Hackathon-2026-Project-AI-Solar-Verdict/rulesets --input .github/rulesets/protect-main.json
+```
 
 ## Before going live
 
