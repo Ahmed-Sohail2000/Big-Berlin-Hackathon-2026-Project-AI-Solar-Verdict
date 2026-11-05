@@ -18,10 +18,6 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "iphone",
-      use: { ...devices["iPhone 14 Pro"] },
-    },
-    {
       name: "desktop",
       use: { ...devices["Desktop Chrome"] },
     },

@@ -1,7 +1,5 @@
 // lib/tile-count/types.ts
-// Shared types for the roof tile counting pipeline. Kept separate from
-// lib/contracts.ts on purpose: this feature is self-contained and never touches
-// the frozen sizing contract. See docs/ROOF_TILE_COUNTING.md.
+// Shared types for the roof tile counting pipeline. See docs/ROOF_TILE_COUNTING.md.
 
 export interface Point {
   x: number;

@@ -1,5 +1,5 @@
 import { ArrowRight } from "lucide-react";
-import { PRIMARY_BUTTON_CLASS } from "../fields";
+import { PRIMARY_BUTTON_CLASS } from "../ui/fields";
 
 export function NextButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (

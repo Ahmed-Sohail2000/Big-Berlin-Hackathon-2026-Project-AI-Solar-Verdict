@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { panelOutline } from "../grid";
-import { DEFAULT_LAYOUT, PANEL_PRESETS, recommendPanels, validatePanelInputs, type PanelSpec } from "../panels";
-import { rectangleQuad } from "../rectify";
+import { panelOutline } from "../vision/grid";
+import { DEFAULT_LAYOUT, PANEL_PRESETS, recommendPanels, validatePanelInputs, type PanelSpec } from "../planning/panels";
+import { rectangleQuad } from "../vision/rectify";
 import type { Obstruction, TileSize } from "../types";
 
 /** 300 x 300 mm cover makes tile counts easy to convert: 30 tiles = 9 m. */

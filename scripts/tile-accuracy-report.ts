@@ -9,12 +9,17 @@
 // the repo: they are personal data.
 //   [{ "photo": "poor/roof1.jpg", "quality": "poor", "rows": 30, "columns": 60,
 //      "corners": [{ "x": 0, "y": 0 }, { "x": 1, "y": 0 }, { "x": 1, "y": 1 }, { "x": 0, "y": 1 }] }]
+// Leave out "corners" to measure the automatic roof detection as well.
+//
+// A low-confidence count scores as "no count returned", because the app leaves the
+// fields empty in that case and the employee never sees the number.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import sharp from "sharp";
-import { countTiles } from "../lib/tile-count/count";
-import { toGray } from "../lib/tile-count/rectify";
+import { countTiles } from "../lib/tile-count/vision/count";
+import { heuristicRoofDetector } from "../lib/tile-count/vision/detect-roof";
+import { toGray } from "../lib/tile-count/vision/rectify";
 import type { Quad } from "../lib/tile-count/types";
 
 export interface ManifestEntry {
@@ -22,7 +27,7 @@ export interface ManifestEntry {
   quality: "poor" | "acceptable" | "optimal";
   rows: number;
   columns: number;
-  corners: Quad;
+  corners?: Quad;
 }
 
 export interface Outcome {
@@ -40,15 +45,15 @@ async function evaluate(entry: ManifestEntry, base: string): Promise<Outcome> {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const gray = toGray({
-    width: info.width,
-    height: info.height,
-    data: new Uint8ClampedArray(data),
-  });
+  const pixels = { width: info.width, height: info.height, data: new Uint8ClampedArray(data) };
+  const corners = entry.corners ?? heuristicRoofDetector.detect(pixels).quad;
 
-  const result = countTiles(gray, entry.corners);
-  const rowError = result.rows.count === null ? null : result.rows.count - entry.rows;
-  const columnError = result.columns.count === null ? null : result.columns.count - entry.columns;
+  const result = countTiles(toGray(pixels), corners);
+  const shown = (count: number | null) => (result.level === "low" ? null : count);
+  const rows = shown(result.rows.count);
+  const columns = shown(result.columns.count);
+  const rowError = rows === null ? null : rows - entry.rows;
+  const columnError = columns === null ? null : columns - entry.columns;
   const worst = Math.max(Math.abs(rowError ?? 0), Math.abs(columnError ?? 0));
   return {
     entry,

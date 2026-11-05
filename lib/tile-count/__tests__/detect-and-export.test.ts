@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { heuristicRoofDetector } from "../detect-roof";
-import { toCsv, toJson, toPdf, type TileReport } from "../export";
-import { gridLines, obstructionOutline } from "../grid";
-import { describeObstruction, proposeObstructions, validateObstruction } from "../obstructions";
-import { rectangleQuad } from "../rectify";
+import { heuristicRoofDetector } from "../vision/detect-roof";
+import { toCsv, toJson, toPdf, type TileReport } from "../io/export";
+import { gridLines, obstructionOutline } from "../vision/grid";
+import { describeObstruction, proposeObstructions, validateObstruction } from "../vision/obstructions";
+import { rectangleQuad } from "../vision/rectify";
 import type { Obstruction, Quad } from "../types";
-import { checkUpload, MAX_UPLOAD_BYTES, sniffPhotoFormat } from "../upload";
-import { colourScene, renderRoof } from "../synthetic-roof";
+import { checkUpload, MAX_UPLOAD_BYTES, sniffPhotoFormat } from "../io/upload";
+import { colourScene, renderRoof } from "../testing/synthetic-roof";
 
 const REPORT: TileReport = {
   caseReference: "Case 123",

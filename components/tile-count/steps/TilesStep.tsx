@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { NumberField, StepPanel } from "../fields";
-import { RulerCalibration } from "../RulerCalibration";
-import type { Workspace } from "../useWorkspace";
+import { NumberField, StepPanel } from "../ui/fields";
+import { RulerCalibration } from "./RulerCalibration";
+import type { Workspace } from "../state/useWorkspace";
 import { NextButton } from "./NextButton";
 
 export function TilesStep({ workspace }: { workspace: Workspace }) {
-  const { tile, setTile, tileErrors, setStep, dimensions } = workspace;
+  const { tile, setTile, tileErrors, tileWarnings, setStep, dimensions } = workspace;
   const [showRuler, setShowRuler] = useState(false);
 
   return (
     <StepPanel
       title="Enter the tile size"
-      hint="Required, in millimetres. Tile counts become metres through the exposed height and cover width."
+      hint="Required, in millimetres. Enter the overlap, or the row spacing if you know it. A wrong overlap makes the roof the wrong height, so check it against the consultation form."
     >
       <div className="grid grid-cols-2 gap-3">
         <NumberField label="Tile height" value={tile.height} onChange={(height) => setTile({ height })} />
@@ -30,6 +30,11 @@ export function TilesStep({ workspace }: { workspace: Workspace }) {
       {tile.height !== "" && tile.width !== "" && tileErrors.length > 0 && (
         <p className="mt-2 text-xs text-warning">{tileErrors[0]}</p>
       )}
+      {tileWarnings.map((warning) => (
+        <p key={warning} className="mt-2 text-xs text-warning">
+          {warning}
+        </p>
+      ))}
       {dimensions && (
         <p className="mt-3 text-xs text-muted">
           Exposed height {dimensions.exposedHeightMm} mm, cover width {dimensions.coverWidthMm} mm. Roof area{" "}

@@ -1,11 +1,11 @@
-import { Download } from "lucide-react";
-import { BUTTON_CLASS, Field, INPUT_CLASS, PRIMARY_BUTTON_CLASS, StepPanel } from "../fields";
-import type { ExportFormat, Workspace } from "../useWorkspace";
+import { ArrowRight, Download } from "lucide-react";
+import { BUTTON_CLASS, Field, INPUT_CLASS, PRIMARY_BUTTON_CLASS, StepPanel } from "../ui/fields";
+import type { ExportFormat, Workspace } from "../state/useWorkspace";
 
-const FORMATS: ExportFormat[] = ["pdf", "png", "csv", "json"];
+const FORMATS: ExportFormat[] = ["pdf", "png", "dxf", "csv", "json"];
 
 export function ExportStep({ workspace }: { workspace: Workspace }) {
-  const { blocker, confirmed, photo, quad } = workspace;
+  const { blocker, confirmed, nextQueued, photo, quad } = workspace;
   return (
     <StepPanel
       title="Confirm and export"
@@ -37,7 +37,7 @@ export function ExportStep({ workspace }: { workspace: Workspace }) {
         >
           {confirmed ? "Confirmed" : "Confirm result"}
         </button>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {FORMATS.map((format) => (
             <button
               key={format}
@@ -46,11 +46,25 @@ export function ExportStep({ workspace }: { workspace: Workspace }) {
               disabled={!confirmed}
               onClick={() => void workspace.exportAs(format)}
             >
-              <Download className="h-3.5 w-3.5" aria-hidden />
+              <Download className="h-4 w-4" aria-hidden />
               {format.toUpperCase()}
             </button>
           ))}
         </div>
+        <p className="text-xs text-muted">
+          DXF is a true-scale drawing in millimetres for the CAD program. PDF and PNG show the annotated photo.
+        </p>
+        {nextQueued && (
+          <button
+            type="button"
+            className={`${BUTTON_CLASS} w-full`}
+            disabled={!confirmed}
+            onClick={() => workspace.openQueued(nextQueued.index)}
+          >
+            Next photo in this folder
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </button>
+        )}
       </div>
     </StepPanel>
   );

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { countTiles } from "../count";
-import { applyHomography, computeHomography, isValidQuad } from "../homography";
-import { rectangleQuad, rectify, toGray } from "../rectify";
+import { countTiles } from "../vision/count";
+import { applyHomography, computeHomography, isValidQuad } from "../vision/homography";
+import { rectangleQuad, rectify, toGray } from "../vision/rectify";
 import type { Quad } from "../types";
-import { photographRoof, renderNoise, renderRoof } from "../synthetic-roof";
+import { photographRoof, renderNoise, renderRoof } from "../testing/synthetic-roof";
 
 /** Oblique view from below: the eave is wide, the ridge narrow and foreshortened. */
 const OBLIQUE: Quad = [

@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, type DragEvent, type ReactNode } from "react";
-import { Check, Grid3x3, Loader2, RotateCcw, Sparkles, SunMedium, Upload } from "lucide-react";
-import { BUTTON_CLASS } from "./fields";
-import { RoofOverlay } from "./RoofOverlay";
+import { useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { Check, FolderOpen, Grid3x3, ImageUp, Loader2, RotateCcw, Sparkles, SunMedium, Upload } from "lucide-react";
+import { BUTTON_CLASS } from "./ui/fields";
+import { RoofOverlay, type OverlayTool } from "./overlay/RoofOverlay";
 import { ExportStep } from "./steps/ExportStep";
 import { ObstructionsStep } from "./steps/ObstructionsStep";
 import { PanelsStep } from "./steps/PanelsStep";
 import { PhotoStep } from "./steps/PhotoStep";
 import { RoofStep } from "./steps/RoofStep";
 import { TilesStep } from "./steps/TilesStep";
-import { STEPS, useWorkspace, type Workspace } from "./useWorkspace";
+import { STEPS, useWorkspace, type Workspace } from "./state/useWorkspace";
 
 const ACCEPTED_FILES = ".jpg,.jpeg,.png,.heic,.heif,.pdf";
 
@@ -28,12 +28,12 @@ function Stepper({ workspace }: { workspace: Workspace }) {
               disabled={!reachable}
               aria-current={index === current ? "step" : undefined}
               onClick={() => workspace.setStep(step.id)}
-              className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 index === current ? "bg-surface-raised text-foreground" : "text-muted hover:text-foreground"
               }`}
             >
               <span
-                className={`flex h-5 w-5 items-center justify-center rounded-md border text-[11px] ${
+                className={`flex h-6 w-6 items-center justify-center rounded-md border text-xs ${
                   index === current
                     ? "border-accent text-accent"
                     : done
@@ -42,7 +42,7 @@ function Stepper({ workspace }: { workspace: Workspace }) {
                 }`}
                 aria-hidden
               >
-                {done ? <Check className="h-3 w-3" /> : index + 1}
+                {done ? <Check className="h-3.5 w-3.5" /> : index + 1}
               </span>
               {step.label}
             </button>
@@ -59,8 +59,12 @@ function Dropzone({ workspace }: { workspace: Workspace }) {
   function drop(event: DragEvent) {
     event.preventDefault();
     setHovering(false);
-    const file = event.dataTransfer.files[0];
-    if (file) void workspace.loadFile(file);
+    void workspace.addDrop(event.dataTransfer);
+  }
+
+  function choose(event: ChangeEvent<HTMLInputElement>) {
+    void workspace.addFiles(Array.from(event.target.files ?? []));
+    event.target.value = "";
   }
 
   return (
@@ -75,32 +79,42 @@ function Dropzone({ workspace }: { workspace: Workspace }) {
         hovering ? "border-accent bg-surface-raised" : "border-border bg-surface"
       }`}
     >
-      <Upload className="h-8 w-8 text-accent" aria-hidden />
-      <p className="text-sm font-semibold">Drop a roof photo here</p>
-      <p className="max-w-sm text-xs leading-relaxed text-muted">
-        JPEG, PNG, HEIC or PDF, up to 30 MB. One photo per roof surface. The photo stays on this device.
+      <Upload className="h-9 w-9 text-accent" aria-hidden />
+      <p className="text-lg font-semibold">Drop a roof photo or a customer folder here</p>
+      <p className="max-w-md text-sm text-muted">
+        JPEG, PNG, HEIC or PDF, up to 30 MB each. One photo per roof surface. Files stay on this device.
       </p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         <label className={`${BUTTON_CLASS} cursor-pointer`}>
-          Choose file
+          <ImageUp className="h-4 w-4" aria-hidden />
+          Choose photos
           <input
             type="file"
+            multiple
             accept={ACCEPTED_FILES}
             aria-label="Roof photo"
             className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void workspace.loadFile(file);
-              event.target.value = "";
-            }}
+            onChange={choose}
+          />
+        </label>
+        <label className={`${BUTTON_CLASS} cursor-pointer`}>
+          <FolderOpen className="h-4 w-4" aria-hidden />
+          Choose folder
+          <input
+            type="file"
+            multiple
+            aria-label="Customer folder"
+            className="sr-only"
+            onChange={choose}
+            {...{ webkitdirectory: "" }}
           />
         </label>
         <button type="button" className={BUTTON_CLASS} onClick={workspace.loadSample}>
-          <Sparkles className="h-3.5 w-3.5" aria-hidden />
+          <Sparkles className="h-4 w-4" aria-hidden />
           Try a sample roof
         </button>
       </div>
-      {workspace.busy && <p className="text-xs text-muted">Reading the photo</p>}
+      {workspace.busy && <p className="text-sm text-muted">Reading the files</p>}
       {workspace.error && <p className="text-sm text-warning">{workspace.error}</p>}
     </div>
   );
@@ -119,7 +133,7 @@ function Toggle({ label, icon, on, onClick }: ToggleProps) {
       type="button"
       aria-pressed={on}
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors ${
         on ? "border-accent text-accent" : "border-border text-muted hover:text-foreground"
       }`}
     >
@@ -131,62 +145,77 @@ function Toggle({ label, icon, on, onClick }: ToggleProps) {
 
 /** Running totals, so the employee sees the effect of every edit in any step. */
 function Summary({ workspace }: { workspace: Workspace }) {
-  const { rowCount, columnCount, dimensions, recommendation } = workspace;
+  const { rowCount, columnCount, dimensions } = workspace;
+  const { plan } = workspace.planner;
   const items = [
     { label: "Tiles", value: rowCount && columnCount ? `${rowCount} × ${columnCount}` : "–" },
     {
       label: "Roof",
       value: dimensions ? `${dimensions.heightM.toFixed(2)} × ${dimensions.widthM.toFixed(2)} m` : "–",
     },
-    { label: "Panels", value: recommendation ? String(recommendation.count) : "–" },
-    { label: "Power", value: recommendation ? `${recommendation.systemKwp.toFixed(2)} kWp` : "–" },
+    { label: "Panels", value: plan ? String(plan.count) : "–" },
+    { label: "Power", value: plan ? `${plan.systemKwp.toFixed(2)} kWp` : "–" },
   ];
   return (
     <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
       {items.map((item) => (
-        <div key={item.label} className="bg-surface px-3 py-2">
-          <dt className="text-[11px] text-muted">{item.label}</dt>
-          <dd className="text-sm font-semibold tabular-nums">{item.value}</dd>
+        <div key={item.label} className="bg-surface px-4 py-3">
+          <dt className="text-xs text-muted">{item.label}</dt>
+          <dd className="font-mono text-base font-semibold whitespace-nowrap tabular-nums">{item.value}</dd>
         </div>
       ))}
     </dl>
   );
 }
 
+/** The mouse only places things on the photo in the step that owns them. */
+function activeTool(workspace: Workspace): OverlayTool | null {
+  const { step, planner, drawingArea } = workspace;
+  if (step === "panels" && planner.mode === "manual") {
+    return { onDown: planner.pick, onMove: planner.hoverAt, onLeave: () => planner.hoverAt(null) };
+  }
+  if (step === "obstructions" && drawingArea) {
+    return { onDown: workspace.beginArea, onMove: workspace.extendArea, onUp: workspace.finishArea };
+  }
+  return null;
+}
+
 /** Guided flow: photo, roof edges, tiles, obstructions, panels, export. Runs entirely in the browser. */
 export function TileCountWorkspace() {
   const workspace = useWorkspace();
-  const { photo, quad, step } = workspace;
+  const { photo, quad, step, planner } = workspace;
 
   return (
     <>
       <Stepper workspace={workspace} />
-      <main className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <main className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_430px]">
         <div className="min-w-0 space-y-3">
           {photo && quad ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <Toggle
                   label="Grid"
-                  icon={<Grid3x3 className="h-3.5 w-3.5" aria-hidden />}
+                  icon={<Grid3x3 className="h-4 w-4" aria-hidden />}
                   on={workspace.showGrid}
                   onClick={() => workspace.setShowGrid(!workspace.showGrid)}
                 />
-                <Toggle
-                  label="Panels"
-                  icon={<SunMedium className="h-3.5 w-3.5" aria-hidden />}
-                  on={workspace.showPanels}
-                  onClick={() => workspace.setShowPanels(!workspace.showPanels)}
-                />
-                {photo.sample && <span className="text-xs text-warning">Sample roof, not a real photo</span>}
+                {planner.mode !== "none" && (
+                  <Toggle
+                    label="Panels"
+                    icon={<SunMedium className="h-4 w-4" aria-hidden />}
+                    on={workspace.showPanels}
+                    onClick={() => workspace.setShowPanels(!workspace.showPanels)}
+                  />
+                )}
+                {photo.sample && <span className="text-sm text-warning">Sample roof, not a real photo</span>}
                 {workspace.busy && (
-                  <span className="flex items-center gap-1.5 text-xs text-muted">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <span className="flex items-center gap-1.5 text-sm text-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                     Counting
                   </span>
                 )}
                 <button type="button" className={`${BUTTON_CLASS} ml-auto`} onClick={workspace.startOver}>
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                  <RotateCcw className="h-4 w-4" aria-hidden />
                   Start over
                 </button>
               </div>
@@ -195,7 +224,9 @@ export function TileCountWorkspace() {
                 quad={quad}
                 grid={workspace.grid}
                 obstructions={workspace.obstructionShapes}
-                panels={workspace.showPanels ? workspace.panelOutlines : []}
+                panels={workspace.showPanels ? planner.panelShapes : []}
+                ghost={planner.ghost}
+                tool={activeTool(workspace)}
                 onQuadChange={(next) => {
                   workspace.setQuad(next);
                   workspace.invalidate();
@@ -210,7 +241,7 @@ export function TileCountWorkspace() {
         </div>
 
         <div className="space-y-3">
-          {step === "photo" && <PhotoStep />}
+          {step === "photo" && <PhotoStep workspace={workspace} />}
           {step === "roof" && <RoofStep workspace={workspace} />}
           {step === "tiles" && <TilesStep workspace={workspace} />}
           {step === "obstructions" && <ObstructionsStep workspace={workspace} />}

@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:accuracy": "vitest run lib/tile-count/__tests__/accuracy-benchmark.test.ts",
+    "test:security": "vitest run lib/auth lib/tile-count/__tests__/intake-and-cad.test.ts lib/tile-count/__tests__/detect-and-export.test.ts",
     "accuracy": "pnpm dlx tsx scripts/tile-accuracy-report.ts"
   },
   "dependencies": {
@@ -26,7 +28,6 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9",
     "eslint-config-next": "15.5.29",
     "happy-dom": "^20.9.0",

@@ -1,11 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
-import { AppHeader } from "@/components/AppHeader";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { AppHeader } from "@/components/layout/AppHeader";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+/** Built for engineering documents: clear at reading size, and figures that line up. */
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "600"],
 });
 
 export const metadata: Metadata = {
@@ -24,7 +32,7 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(!t&&matchMedia(
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

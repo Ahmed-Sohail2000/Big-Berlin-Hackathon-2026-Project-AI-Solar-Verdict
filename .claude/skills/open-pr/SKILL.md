@@ -3,7 +3,7 @@ name: open-pr
 description: run the full test suite, commit/push, and open a pull request with a proper title and description for this repo
 ---
 
-Run this whenever asked to "make a PR", "open a pull request", or "ship this branch" for HelioSense AI. It runs the tests correctly for this repo (the e2e gotcha below is easy to get wrong), then creates the PR against the user's own fork — never `upstream` — falling back to a browser link if `gh` isn't set up.
+Run this whenever asked to "make a PR", "open a pull request", or "ship this branch" for HelioSense Roof Count. It runs the tests correctly for this repo (the e2e gotcha below is easy to get wrong), then creates the PR against the user's own fork — never `upstream` — falling back to a browser link if `gh` isn't set up.
 
 ## 1. Run the tests
 
@@ -13,15 +13,16 @@ pnpm tsc --noEmit
 pnpm test
 ```
 
-**e2e**: `playwright.config.ts` defaults to `http://localhost:3000`, so start a server first:
+**e2e**: `playwright.config.ts` defaults to `http://localhost:3000`, so start a production server first:
 
 ```bash
-pnpm dev &   # wait for :3000 to respond
-BASE_URL=http://localhost:3000 pnpm test:e2e
-# then stop the dev server (find its PID via `netstat -ano | grep :3000`, taskkill /F it)
+pnpm build
+APP_USERNAME=e2e APP_PASSWORD=temporary-e2e-pass pnpm start   # wait for :3000 to respond
+APP_USERNAME=e2e APP_PASSWORD=temporary-e2e-pass pnpm test:e2e
+# then stop the server (find its PID via `netstat -ano | grep :3000`, taskkill /F it)
 ```
 
-If e2e has pre-existing failures unrelated to your change (this repo's `e2e/*.spec.ts` specs have drifted from the current UI copy in places — e.g. placeholder text), don't silently fix them unless asked. Note which failures are pre-existing vs. introduced by your change in the PR body instead.
+If e2e has pre-existing failures unrelated to your change, don't silently fix them unless asked. Note which failures are pre-existing vs. introduced by your change in the PR body instead.
 
 ## 2. Commit
 
@@ -37,7 +38,7 @@ Use a real commit message (why, not what) ending with `Co-Authored-By: Claude Fa
 git push origin <branch>          # or `git push -u origin <branch>` if no upstream yet
 ```
 
-This repo has both `origin` (the user's own fork, `Ahmed-Sohail2000/...`) and `upstream` (`georgenikabadze-hub/verdict`, the original hackathon team's repo) as remotes. **Always target `origin`** unless the user explicitly asks to contribute back upstream — this is the user's own submission, not a contribution to someone else's project.
+This repo has both `origin` (the user's own fork, `Ahmed-Sohail2000/...`) and `upstream` (the original hackathon team's repo) as remotes. **Always target `origin`** unless the user explicitly asks to contribute back upstream — this is the user's own submission, not a contribution to someone else's project.
 
 ## 4. Open the PR
 

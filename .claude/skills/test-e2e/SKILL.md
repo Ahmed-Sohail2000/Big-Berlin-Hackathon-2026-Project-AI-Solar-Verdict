@@ -3,14 +3,19 @@ name: test-e2e
 description: run end-to-end tests using playwright
 ---
 
-Run the E2E test suite to verify the user flow and UI stability.
+Run the browser tests against a production build. They cover the whole flow, HEIC,
+EXIF removal, folders, manual panels, DXF, headers and the login lockout.
 
 ## Command
 ```bash
-pnpm test:e2e
+pnpm build
+APP_USERNAME=e2e APP_PASSWORD=temporary-e2e-pass pnpm start
+APP_USERNAME=e2e APP_PASSWORD=temporary-e2e-pass pnpm test:e2e
 ```
 
 ## Scope
-- Tests located in `e2e/*.spec.ts`.
-- Verifies integration between the frontend and API.
-- Requires the dev server to be running if the tests don't start it themselves.
+- Tests live in `e2e/*.spec.ts`. The app is desktop only, so there is one browser project.
+- Use a production build. The dev server's looser policy can hide browser policy
+  failures, which is how the HEIC failure stayed unnoticed.
+- Stop the server afterwards.
+- Screenshots land in `test-results/`.

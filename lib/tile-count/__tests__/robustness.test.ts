@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { countTiles } from "../count";
-import { rectangleQuad } from "../rectify";
+import { countTiles } from "../vision/count";
+import { rectangleQuad } from "../vision/rectify";
 import type { Quad } from "../types";
-import { photographRoof, renderRoof } from "../synthetic-roof";
+import { photographRoof, renderRoof } from "../testing/synthetic-roof";
 
 const OBLIQUE: Quad = [
   { x: 300, y: 90 },

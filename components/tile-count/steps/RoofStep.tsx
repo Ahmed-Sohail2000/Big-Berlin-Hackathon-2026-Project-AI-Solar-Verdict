@@ -1,7 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import type { ConfidenceLevel } from "@/lib/tile-count/types";
-import { NumberField, StepPanel } from "../fields";
-import type { Workspace } from "../useWorkspace";
+import { NumberField, StepPanel } from "../ui/fields";
+import type { Workspace } from "../state/useWorkspace";
 import { NextButton } from "./NextButton";
 
 const LEVEL_STYLE: Record<ConfidenceLevel, { label: string; className: string }> = {
@@ -11,7 +11,7 @@ const LEVEL_STYLE: Record<ConfidenceLevel, { label: string; className: string }>
 };
 
 export function RoofStep({ workspace }: { workspace: Workspace }) {
-  const { result, rows, columns, setRows, setColumns, setStep } = workspace;
+  const { photo, result, rows, columns, setRows, setColumns, setStep } = workspace;
   const level = result ? LEVEL_STYLE[result.level] : null;
   const estimate =
     result?.level === "low" && result.rows.count !== null && result.columns.count !== null
@@ -34,9 +34,9 @@ export function RoofStep({ workspace }: { workspace: Workspace }) {
       </div>
       <p className="mt-2 text-xs text-muted">The grid must match the real tiles. If it does not, type the right count.</p>
       {estimate && <p className="mt-3 text-xs text-warning">{estimate}</p>}
-      {result?.warnings.map((warning) => (
+      {[...(photo?.warnings ?? []), ...(result?.warnings ?? [])].map((warning) => (
         <p key={warning} className="mt-2 flex gap-1.5 text-xs text-warning">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           {warning}
         </p>
       ))}

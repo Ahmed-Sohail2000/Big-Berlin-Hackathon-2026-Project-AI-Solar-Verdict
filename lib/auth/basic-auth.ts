@@ -2,6 +2,9 @@
 // Password gate for the whole app. Fails closed: a production deployment without
 // credentials configured refuses every request rather than running open.
 
+/** A shorter production password counts as not configured, so a weak one cannot go live. */
+export const MIN_PASSWORD_LENGTH = 12;
+
 export type AuthDecision = "allow" | "challenge" | "misconfigured";
 
 interface AuthConfig {
@@ -38,6 +41,7 @@ function parseBasicHeader(header: string | null): { username: string; password: 
 export async function authorize(header: string | null, config: AuthConfig): Promise<AuthDecision> {
   const { username, password, production } = config;
   if (!username || !password) return production ? "misconfigured" : "allow";
+  if (production && password.length < MIN_PASSWORD_LENGTH) return "misconfigured";
 
   const supplied = parseBasicHeader(header);
   if (!supplied) return "challenge";

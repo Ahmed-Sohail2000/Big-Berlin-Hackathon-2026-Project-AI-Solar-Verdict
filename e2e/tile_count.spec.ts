@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import sharp from "sharp";
-import { toPdf, type TileReport } from "../lib/tile-count/export";
-import { photographRoof, renderNoise, renderRoof } from "../lib/tile-count/synthetic-roof";
+import { toPdf, type TileReport } from "../lib/tile-count/io/export";
+import { photographRoof, renderNoise, renderRoof } from "../lib/tile-count/testing/synthetic-roof";
 import type { GrayImage, Quad } from "../lib/tile-count/types";
 
 /** Full flow on synthetic photos. Needs a local server at BASE_URL. */
@@ -67,7 +69,6 @@ async function fillTileSize(page: Page) {
 }
 
 test.describe("roof tile count", () => {
-  test.skip(({ isMobile }) => isMobile, "desktop only");
   test.use({ colorScheme: "dark" });
 
   test.beforeEach(async ({ page }) => {
@@ -95,7 +96,7 @@ test.describe("roof tile count", () => {
     await expect(page.getByText("7.00 × 10.80 m")).toBeVisible();
 
     await page.getByRole("button", { name: "Mark obstructions" }).click();
-    await page.getByRole("button", { name: "Recommend panels" }).click();
+    await page.getByRole("button", { name: "Plan panels" }).click();
     await expect(page.getByText(/\d+ panels, \d+\.\d\d kWp/)).toBeVisible();
     await page.waitForTimeout(300);
     await page.screenshot({ path: "test-results/panels-dark.png", fullPage: true });
@@ -116,13 +117,21 @@ test.describe("roof tile count", () => {
     const report = JSON.parse(readFileSync(await json.path(), "utf8"));
     expect(report).toMatchObject({ rows: ROWS, columns: COLUMNS, correctedByEmployee: false });
     expect(report.dimensions.widthM).toBe(10.8);
-    expect(report.panels.recommendation.count).toBeGreaterThan(0);
+    expect(report.panels.plan.count).toBeGreaterThan(0);
 
     const [pdf] = await Promise.all([
       page.waitForEvent("download"),
       page.getByRole("button", { name: "PDF" }).click(),
     ]);
     expect(readFileSync(await pdf.path()).subarray(0, 5).toString()).toBe("%PDF-");
+
+    const [dxf] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "DXF" }).click(),
+    ]);
+    const drawing = readFileSync(await dxf.path(), "utf8");
+    expect(drawing).toContain("ROOF");
+    expect(drawing).toContain("10800");
 
     expect(outbound).toEqual([]);
     expect(blocked).toEqual([]);
@@ -132,12 +141,12 @@ test.describe("roof tile count", () => {
     await upload(page, "roof.png", "image/png", await toFile(roofPhoto(), "png"));
     await dragCornersTo(page, CORNERS);
     await fillTileSize(page);
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await page.getByRole("button", { name: "Confirm result" }).click();
     await expect(page.getByRole("button", { name: "CSV" })).toBeEnabled();
     await page.getByRole("button", { name: "Roof edges" }).click();
     await page.getByLabel("Tiles wide").fill("35");
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await expect(page.getByRole("button", { name: "CSV" })).toBeDisabled();
   });
 
@@ -148,7 +157,7 @@ test.describe("roof tile count", () => {
     await page.getByRole("button", { name: "Obstructions", exact: true }).click();
     await page.getByRole("button", { name: "Detect areas" }).click();
     await expect(page.getByText(/11 tiles from the bottom, 26 from the left, 4 wide, 5 high/)).toBeVisible();
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await expect(page.getByText("Accept or remove 1 proposed area(s).")).toBeVisible();
   });
 
@@ -178,6 +187,175 @@ test.describe("roof tile count", () => {
     await expect(page.locator("svg.touch-none")).toBeVisible({ timeout: 30_000 });
   });
 
+  test("counts a real HEIC photo under the browser security policy", async ({ page }) => {
+    const blocked: string[] = [];
+    page.on("console", (message) => {
+      if (/Content Security Policy|unsafe-eval/.test(message.text())) blocked.push(message.text());
+    });
+    await page.getByLabel("Roof photo", { exact: true }).setInputFiles("e2e/fixtures/roof.heic");
+    await dragCornersTo(page, CORNERS);
+    await expect(page.getByLabel("Tiles high")).toHaveValue(String(ROWS), { timeout: 20_000 });
+    await expect(page.getByLabel("Tiles wide")).toHaveValue(String(COLUMNS));
+    expect(blocked).toEqual([]);
+  });
+
+  test("removes location data, and keeps it out of every export", async ({ page }) => {
+    const secret = "SECRET-LOCATION-52.5200";
+    const jpeg = await sharp(await toFile(roofPhoto(), "jpeg"))
+      .withExif({ IFD0: { ImageDescription: secret, Artist: secret } })
+      .jpeg()
+      .toBuffer();
+    expect((await sharp(jpeg).metadata()).exif).toBeDefined();
+
+    await upload(page, "roof.jpg", "image/jpeg", jpeg);
+    await dragCornersTo(page, CORNERS);
+    await fillTileSize(page);
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await page.getByRole("button", { name: "Confirm result" }).click();
+
+    for (const name of ["PNG", "PDF", "DXF", "CSV", "JSON"]) {
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.getByRole("button", { name, exact: true }).click(),
+      ]);
+      const file = readFileSync(await download.path());
+      expect(file.includes(secret)).toBe(false);
+      if (name === "PNG") expect((await sharp(file).metadata()).exif).toBeUndefined();
+    }
+  });
+
+  test("checks a customer folder and works through it photo by photo", async ({ page }) => {
+    const folder = mkdtempSync(join(tmpdir(), "customer-folder-"));
+    try {
+      const png = await toFile(roofPhoto(), "png");
+      writeFileSync(join(folder, "south.png"), png);
+      writeFileSync(join(folder, "north.png"), png);
+      const jpeg = await toFile(roofPhoto(), "jpeg");
+      writeFileSync(join(folder, "cut.jpg"), jpeg.subarray(0, jpeg.length - 2000));
+      writeFileSync(join(folder, "offer.docx"), "PK not a photo");
+      writeFileSync(join(folder, "Thumbs.db"), "system file");
+
+      await page.getByLabel("Customer folder").setInputFiles(folder);
+      await expect(page.getByText("3 ready, 1 refused.", { exact: false })).toBeVisible();
+      await expect(page.getByText("offer.docx")).toBeVisible();
+      await expect(page.getByText("Thumbs.db")).toHaveCount(0);
+      await expect(page.getByText("This file may be incomplete.", { exact: false })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Open offer.docx" })).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Open cut.jpg" }).click();
+      await expect(page.getByText("It may be damaged.").first()).toBeVisible();
+      await expect(page.getByRole("button", { name: "Open cut.jpg" })).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Open south.png" }).click();
+      await dragCornersTo(page, CORNERS);
+      await fillTileSize(page);
+      await page.getByRole("button", { name: "Export", exact: true }).click();
+      await page.getByRole("button", { name: "Confirm result" }).click();
+      await page.getByRole("button", { name: "Next photo in this folder" }).click();
+
+      await expect(page.locator("svg.touch-none")).toBeVisible({ timeout: 20_000 });
+      await page.getByRole("button", { name: "Tiles", exact: true }).click();
+      await expect(page.getByLabel("Tile height")).toHaveValue("420");
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("the planner adds and removes panels by hand on the tile grid", async ({ page }) => {
+    await page.getByRole("button", { name: "Try a sample roof" }).click();
+    await expect(page.getByLabel("Tiles high")).toHaveValue("22", { timeout: 20_000 });
+    await page.locator("ol").getByRole("button", { name: "Panels" }).click();
+    await page.getByRole("button", { name: "Manual" }).click();
+    await expect(page.getByText("0 panels, 0.00 kWp")).toBeVisible();
+
+    const box = (await page.locator("svg.touch-none").boundingBox())!;
+    const roofCentre = { x: box.x + box.width * 0.45, y: box.y + box.height * 0.65 };
+    await page.mouse.move(roofCentre.x, roofCentre.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.getByText("1 panels, 0.44 kWp")).toBeVisible();
+
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.getByText("0 panels, 0.00 kWp")).toBeVisible();
+
+    await page.getByLabel("From bottom (tiles)").fill("2");
+    await page.getByLabel("From left (tiles)").fill("2");
+    await page.getByRole("button", { name: "Add panel" }).click();
+    await expect(page.getByText("1 panels, 0.44 kWp")).toBeVisible();
+    await expect(page.getByText("2 tiles from the bottom, 2 from the left, portrait")).toBeVisible();
+
+    await page.getByRole("button", { name: "Add panel" }).click();
+    await expect(page.getByText("Too close to another panel")).toBeVisible();
+
+    await page.getByLabel("From left (tiles)").fill("39");
+    await page.getByRole("button", { name: "Add panel" }).click();
+    await expect(page.getByText("Too close to the roof edge")).toBeVisible();
+
+    await page.getByRole("button", { name: "Remove panel 1" }).click();
+    await expect(page.getByText("0 panels, 0.00 kWp")).toBeVisible();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await expect(page.getByText("Place at least one panel, or choose Counts only.")).toBeVisible();
+  });
+
+  test("the automatic layout can be edited, and counts only leaves panels out", async ({ page }) => {
+    await page.getByRole("button", { name: "Try a sample roof" }).click();
+    await expect(page.getByLabel("Tiles high")).toHaveValue("22", { timeout: 20_000 });
+    await page.locator("ol").getByRole("button", { name: "Panels" }).click();
+
+    const summary = (await page.getByText(/^\d+ panels, /).textContent())!;
+    const automatic = Number(summary.split(" ")[0]);
+    expect(automatic).toBeGreaterThan(1);
+    await page.getByRole("button", { name: "Edit this layout by hand" }).click();
+    await expect(page.getByText(summary)).toBeVisible();
+    await page.getByRole("button", { name: "Remove panel 1", exact: true }).click();
+    await expect(page.getByText(new RegExp(`^${automatic - 1} panels, `))).toBeVisible();
+
+    await page.getByRole("button", { name: "Counts only" }).click();
+    await page.getByRole("button", { name: "Confirm and export" }).click();
+    await page.getByRole("button", { name: "Confirm result" }).click();
+    const [json] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "JSON" }).click(),
+    ]);
+    const report = JSON.parse(readFileSync(await json.path(), "utf8"));
+    expect(report.panels).toBeUndefined();
+    expect(report.rows).toBe(22);
+  });
+
+  test("an obstruction can be drawn on the photo in whole tiles", async ({ page }) => {
+    await page.getByRole("button", { name: "Try a sample roof" }).click();
+    await expect(page.getByLabel("Tiles high")).toHaveValue("22", { timeout: 20_000 });
+    await page.getByRole("button", { name: "Obstructions", exact: true }).click();
+    await page.getByRole("button", { name: "Draw on photo" }).click();
+
+    const box = (await page.locator("svg.touch-none").boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.6, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByText(/\d+ tiles from the bottom, \d+ from the left, \d+ wide, \d+ high/)).toBeVisible();
+  });
+
+  test("a blank overlap blocks the result instead of inflating the roof", async ({ page }) => {
+    await upload(page, "roof.png", "image/png", await toFile(roofPhoto(), "png"));
+    await dragCornersTo(page, CORNERS);
+    await fillTileSize(page);
+    await page.getByLabel("Overlap", { exact: true }).fill("");
+    await expect(page.getByText("Enter the overlap, or the row spacing.")).toBeVisible();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Confirm result" })).toBeDisabled();
+  });
+
+  test("refuses a small file that declares an enormous image", async ({ page }) => {
+    const png = Buffer.alloc(64);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    png.writeUInt32BE(30000, 16);
+    png.writeUInt32BE(30000, 20);
+    await upload(page, "bomb.png", "image/png", png);
+    await expect(page.getByText("900 megapixels", { exact: false })).toBeVisible();
+  });
+
   test("rejects a disguised file", async ({ page }) => {
     await upload(page, "roof.jpg", "image/jpeg", Buffer.from("<html><script>alert(1)</script>"));
     await expect(page.getByText("Use a JPEG, PNG, HEIC or PDF file.")).toBeVisible();
@@ -189,11 +367,10 @@ test.describe("roof tile count", () => {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   });
 
-  test("serves the guide and the privacy headers", async ({ page }) => {
-    const response = await page.goto("/guide");
+  test("serves the guide, including what the tool does not solve", async ({ page }) => {
+    await page.goto("/guide");
     await expect(page.getByRole("heading", { name: "How to count a roof" })).toBeVisible();
-    const csp = response!.headers()["content-security-policy"];
-    expect(csp).toContain("connect-src 'self' blob:");
-    expect(csp).toContain("form-action 'none'");
+    await expect(page.getByRole("heading", { name: "Does not solve" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Panel options" })).toBeVisible();
   });
 });

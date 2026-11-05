@@ -5,7 +5,7 @@ import {
   exposedHeightMm,
   measureWithRuler,
   validateTileSize,
-} from "../dimensions";
+} from "../planning/dimensions";
 import type { TileSize } from "../types";
 
 const TILE: TileSize = { heightMm: 420, widthMm: 330, headLapMm: 70, sideLapMm: 30 };

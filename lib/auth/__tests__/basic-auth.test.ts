@@ -10,8 +10,8 @@ describe("authorize", () => {
   });
 
   it("keeps colons inside the password", async () => {
-    const config = { ...CONFIG, password: "a:b:c" };
-    expect(await authorize(header("planner", "a:b:c"), config)).toBe("allow");
+    const config = { ...CONFIG, password: "a:b:c:d:e:f:g" };
+    expect(await authorize(header("planner", "a:b:c:d:e:f:g"), config)).toBe("allow");
   });
 
   it("challenges wrong, missing and malformed credentials", async () => {
@@ -26,6 +26,12 @@ describe("authorize", () => {
   it("fails closed in production when credentials are not configured", async () => {
     expect(await authorize(null, { production: true })).toBe("misconfigured");
     expect(await authorize(null, { username: "planner", production: true })).toBe("misconfigured");
+  });
+
+  it("refuses to run production on a short password", async () => {
+    const weak = { ...CONFIG, password: "short" };
+    expect(await authorize(header("planner", "short"), weak)).toBe("misconfigured");
+    expect(await authorize(header("planner", "short"), { ...weak, production: false })).toBe("allow");
   });
 
   it("stays open for local development without credentials", async () => {

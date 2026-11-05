@@ -1,16 +1,19 @@
 ---
 name: ci-verify
-description: run complete CI check (lint + unit tests + e2e tests)
+description: run complete CI check (types, lint, unit tests, audit, build, e2e tests)
 ---
 
-Runs the full verification suite to ensure no regressions before pushing to main.
+Runs the full verification suite before pushing.
 
 ## Command
 ```bash
-pnpm lint && pnpm test && pnpm test:e2e
+pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm audit --prod && pnpm build
+APP_USERNAME=e2e APP_PASSWORD=temporary-e2e-pass pnpm start
+APP_USERNAME=e2e APP_PASSWORD=temporary-e2e-pass pnpm test:e2e
 ```
 
 ## Scope
-- Linter: checks code style and quality.
-- Unit Tests: verifies core logic in `lib/`.
-- E2E Tests: verifies critical user flows via Playwright. Needs a server on localhost:3000.
+- Types and lint: code quality.
+- Unit tests: `lib/`, including the accuracy benchmark.
+- Audit: known vulnerabilities in dependencies.
+- E2E: the critical flows in a real browser, on a production build.
