@@ -60,6 +60,14 @@ const EXACT: Record<string, string> = {
   "Enter the panel power.": "Geben Sie die Leistung des Moduls ein.",
   "Spacing values cannot be negative.": "Abstände dürfen nicht negativ sein.",
   "Position must be whole numbers of tiles.": "Die Position muss aus ganzen Ziegelzahlen bestehen.",
+  "Click inside the roof outline.": "Klicken Sie innerhalb des Dachumrisses.",
+  "Enter the tiles high and wide first.": "Geben Sie zuerst die Ziegelzahl in Höhe und Breite ein.",
+  "Proposed obstruction areas leave no room for a panel. Resize or remove them.":
+    "Vorgeschlagene Hindernisse lassen keinen Platz für ein Modul. Ändern oder entfernen Sie sie.",
+  "The marked obstructions leave no room for a panel. Resize or remove them.":
+    "Die markierten Hindernisse lassen keinen Platz für ein Modul. Ändern oder entfernen Sie sie.",
+  "This roof is too small for the chosen panel. Check the tile counts and tile size.":
+    "Dieses Dach ist für das gewählte Modul zu klein. Prüfen Sie Ziegelzahlen und Ziegelmaße.",
   "Custom panel": "Eigenes Modul",
   "Large 460 W": "Groß 460 W",
 

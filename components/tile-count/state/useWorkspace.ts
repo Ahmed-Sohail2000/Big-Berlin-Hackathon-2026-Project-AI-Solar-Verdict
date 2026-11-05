@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { countTiles } from "@/lib/tile-count/vision/count";
 import { heuristicRoofDetector } from "@/lib/tile-count/vision/detect-roof";
 import { computeDimensions, tileSizeWarnings, validateTileSize } from "@/lib/tile-count/planning/dimensions";
+import { noFitProblem, panelSetupProblem } from "@/lib/tile-count/planning/panel-status";
 import { toDxf } from "@/lib/tile-count/io/dxf";
 import { toCsv, toJson, toPdf, type TileReport } from "@/lib/tile-count/io/export";
 import type { Language } from "@/lib/i18n/language";
@@ -134,6 +135,19 @@ export function useWorkspace() {
   );
   const planner = usePanelPlan({ roof, quad, onEdit: invalidate });
   const { plan, panelShapes } = planner;
+
+  const panelProblem =
+    planner.mode === "none"
+      ? null
+      : (panelSetupProblem({
+          rows: rowCount,
+          columns: columnCount,
+          tileProblem: tileErrors[0],
+          obstructionsValid,
+        }) ??
+        (roof && planner.recommendation?.count === 0
+          ? noFitProblem(roof.rows, roof.columns, roof.size, roof.obstructions, planner.panelSpec, planner.layoutOptions)
+          : null));
 
   const blocker =
     (!dimensions && (tileErrors[0] ?? "Enter the tiles high and wide.")) ||
@@ -407,6 +421,7 @@ export function useWorkspace() {
     grid,
     obstructionShapes: draftShape ? [...obstructionShapes, draftShape] : obstructionShapes,
     planner,
+    panelProblem,
     queue,
     nextQueued,
     drawingArea,

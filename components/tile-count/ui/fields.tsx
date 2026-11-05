@@ -25,23 +25,28 @@ interface NumberFieldProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** Stays outside the label, so the field keeps a short name. */
+  hint?: string;
 }
 
 /** Numeric text kept as a string, so a half-typed value is not rewritten under the cursor. */
-export function NumberField({ label, value, onChange, disabled }: NumberFieldProps) {
+export function NumberField({ label, value, onChange, disabled, hint }: NumberFieldProps) {
   return (
-    <Field label={label}>
-      <input
-        type="number"
-        min={0}
-        step="any"
-        inputMode="decimal"
-        className={INPUT_CLASS}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </Field>
+    <div>
+      <Field label={label}>
+        <input
+          type="number"
+          min={0}
+          step="any"
+          inputMode="decimal"
+          className={INPUT_CLASS}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </Field>
+      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
+    </div>
   );
 }
 

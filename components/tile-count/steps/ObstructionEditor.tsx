@@ -63,6 +63,7 @@ export function ObstructionEditor({ obstructions, rows, columns, onChange, onDet
           {t.obstructions.add}
         </button>
       </div>
+      <p className="text-xs text-muted">{t.obstructions.unitHint}</p>
       {drawing && <p className="text-xs text-accent">{t.obstructions.drawHint}</p>}
       {obstructions.map((o) => {
         const problem = ready ? validateObstruction(o, rows, columns) : null;
