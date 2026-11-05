@@ -34,6 +34,10 @@ mandatory the moment server storage is added.
 
 - **Login:** HTTP Basic behind HTTPS, compared in constant time. Production refuses
   every request if credentials are missing or the password is under 12 characters.
+- **Public demo:** `PUBLIC_DEMO=true`, with both login values unset, opens a deployment
+  to anyone with the link. Any other value, or any configured login value, keeps it
+  closed. It is for prototype demos only: customer photos still stay in each visitor's
+  browser, but nothing limits who can use the tool, which §7 requires for real use.
 - **Guessing:** 10 failed logins lock that client out for 15 minutes. State is per
   process. The host's proxy must overwrite `x-forwarded-for`, or a guesser could
   rotate it.
@@ -86,7 +90,7 @@ gh api -X POST repos/Ahmed-Sohail2000/Big-Berlin-Hackathon-2026-Project-AI-Solar
 ## Before going live
 
 1. Host in the EU, with a DPA, over HTTPS only.
-2. Set `APP_USERNAME` and a long random `APP_PASSWORD`.
+2. Remove `PUBLIC_DEMO`, and set `APP_USERNAME` and a long random `APP_PASSWORD`.
 3. Make sure the proxy overwrites `x-forwarded-for`.
 4. Decide on SSO or 2FA with the client's IT.
 5. Have the data protection officer review this file.

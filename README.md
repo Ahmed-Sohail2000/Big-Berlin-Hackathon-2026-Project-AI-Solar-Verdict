@@ -22,7 +22,8 @@ the built-in sample roof to walk through every step.
 ## Production
 
 Set `APP_USERNAME` and an `APP_PASSWORD` of at least 12 characters. Without both,
-every request is refused. Serve over HTTPS only, host in the EU, and follow the
+every request is refused. For a prototype demo only, leave both unset and set
+`PUBLIC_DEMO=true` to open the site to anyone with the link. Serve over HTTPS only, host in the EU, and follow the
 checklist in `docs/SECURITY.md`.
 
 ## Docs
