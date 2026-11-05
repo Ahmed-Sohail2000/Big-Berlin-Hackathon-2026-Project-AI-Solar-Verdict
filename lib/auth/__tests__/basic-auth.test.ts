@@ -34,6 +34,28 @@ describe("authorize", () => {
     expect(await authorize(header("planner", "short"), { ...weak, production: false })).toBe("allow");
   });
 
+  it("opens production only for the exact public demo setting", async () => {
+    expect(await authorize(null, { production: true, publicDemo: "true" })).toBe("allow");
+    for (const publicDemo of [undefined, "", "false", "TRUE", "True", "1", "yes", " true", "true "]) {
+      expect(await authorize(null, { production: true, publicDemo })).toBe("misconfigured");
+    }
+  });
+
+  it("keeps a configured login locked when the public demo is on", async () => {
+    const locked = { ...CONFIG, publicDemo: "true" };
+    expect(await authorize(null, locked)).toBe("challenge");
+    expect(await authorize(header("planner", "wrong"), locked)).toBe("challenge");
+    expect(await authorize(header("planner", "correct horse"), locked)).toBe("allow");
+  });
+
+  it("does not open a half-configured login for the public demo", async () => {
+    const half = { username: "planner", production: true, publicDemo: "true" };
+    expect(await authorize(null, half)).toBe("misconfigured");
+    expect(await authorize(null, { password: "correct horse", production: true, publicDemo: "true" })).toBe(
+      "misconfigured",
+    );
+  });
+
   it("stays open for local development without credentials", async () => {
     expect(await authorize(null, { production: false })).toBe("allow");
   });

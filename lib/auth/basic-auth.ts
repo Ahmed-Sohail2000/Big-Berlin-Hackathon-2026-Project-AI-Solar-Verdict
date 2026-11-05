@@ -1,6 +1,7 @@
 // lib/auth/basic-auth.ts
 // Password gate for the whole app. Fails closed: a production deployment without
-// credentials configured refuses every request rather than running open.
+// credentials configured refuses every request rather than running open, unless a
+// deployment was explicitly opened as a public demo.
 
 /** A shorter production password counts as not configured, so a weak one cannot go live. */
 export const MIN_PASSWORD_LENGTH = 12;
@@ -11,6 +12,8 @@ interface AuthConfig {
   username?: string;
   password?: string;
   production: boolean;
+  /** The raw PUBLIC_DEMO setting. Only the exact text "true" opens a deployment. */
+  publicDemo?: string;
 }
 
 async function digest(text: string): Promise<Uint8Array> {
@@ -39,7 +42,9 @@ function parseBasicHeader(header: string | null): { username: string; password: 
 }
 
 export async function authorize(header: string | null, config: AuthConfig): Promise<AuthDecision> {
-  const { username, password, production } = config;
+  const { username, password, production, publicDemo } = config;
+  // A configured login always wins, so this switch can never open a protected deployment.
+  if (!username && !password && publicDemo === "true") return "allow";
   if (!username || !password) return production ? "misconfigured" : "allow";
   if (production && password.length < MIN_PASSWORD_LENGTH) return "misconfigured";
 

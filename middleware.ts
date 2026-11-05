@@ -27,6 +27,7 @@ export async function middleware(request: NextRequest) {
     username: process.env.APP_USERNAME,
     password: process.env.APP_PASSWORD,
     production: process.env.NODE_ENV === "production",
+    publicDemo: process.env.PUBLIC_DEMO,
   });
 
   if (decision === "allow") {

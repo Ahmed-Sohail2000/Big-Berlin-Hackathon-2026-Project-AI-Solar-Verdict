@@ -54,7 +54,7 @@ Check these on every change:
 - `lib/tile-count/testing/synthetic-roof.ts`: known-answer roofs.
 - `components/tile-count/state/`: all client state and actions.
 - `components/layout/LanguageProvider.tsx` + `lib/i18n/`: language choice and all copy.
-- `middleware.ts` + `lib/auth/`: password gate and login throttle.
+- `middleware.ts` + `lib/auth/`: password gate, login throttle and the `PUBLIC_DEMO` switch.
 
 ## Testing
 
