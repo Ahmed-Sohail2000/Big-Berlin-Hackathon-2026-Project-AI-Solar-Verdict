@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { cookies, headers } from "next/headers";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LanguageProvider } from "@/components/layout/LanguageProvider";
@@ -7,17 +7,25 @@ import { WorkspaceProvider } from "@/components/tile-count/state/WorkspaceProvid
 import { LANGUAGE_COOKIE, resolveLanguage } from "@/lib/i18n/language";
 import "./globals.css";
 
-/** Built for engineering documents: clear at reading size, and figures that line up. */
-const plexSans = IBM_Plex_Sans({
+/**
+ * Built for engineering documents: clear at reading size, and figures that line up.
+ * Kept in the repo because Google can answer with a font link that Turbopack cannot
+ * parse, which failed the build on Vercel but not locally. Latin covers German.
+ */
+const plexSans = localFont({
   variable: "--font-plex-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  src: "./fonts/IBMPlexSans-latin-variable.woff2",
+  weight: "100 700",
+  display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const plexMono = localFont({
   variable: "--font-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "600"],
+  src: [
+    { path: "./fonts/IBMPlexMono-latin-400.woff2", weight: "400" },
+    { path: "./fonts/IBMPlexMono-latin-600.woff2", weight: "600" },
+  ],
+  display: "swap",
 });
 
 export const metadata: Metadata = {

@@ -6,6 +6,7 @@ update the map in the same commit.
 ```
 app/                         Next.js routes only. No logic.
   layout.tsx, globals.css    fonts, theme tokens, text scale, language, providers, header
+  fonts/                     IBM Plex files and their licence, so a build needs no Google
   page.tsx                   home page: what it is, what we do, how it works
   tool/page.tsx              the workspace
   guide/page.tsx             user guide, including what the tool does and does not solve
