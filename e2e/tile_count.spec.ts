@@ -64,7 +64,7 @@ async function fillTileSize(page: Page) {
   await page.getByRole("button", { name: "Tiles", exact: true }).click();
   await page.getByLabel("Tile height").fill("420");
   await page.getByLabel("Tile width").fill("330");
-  await page.getByLabel("Overlap", { exact: true }).fill("70");
+  await page.getByLabel("Overlap (mm)", { exact: true }).fill("70");
   await page.getByLabel("Side overlap").fill("30");
 }
 
@@ -298,6 +298,46 @@ test.describe("roof tile count", () => {
     await expect(page.getByText("Place at least one panel, or choose Counts only.")).toBeVisible();
   });
 
+  test("a real photo says what panels still need, and leads there", async ({ page }) => {
+    await upload(page, "roof.png", "image/png", await toFile(roofPhoto(), "png"));
+    await dragCornersTo(page, CORNERS);
+    await expect(page.getByLabel("Tiles high")).toHaveValue(String(ROWS));
+
+    await page.locator("ol").getByRole("button", { name: "Panels" }).click();
+    await expect(page.getByText("Enter the tile height.")).toBeVisible();
+    await page.getByRole("button", { name: "Manual" }).click();
+    await expect(page.getByText("Enter the tile height.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Go to Tiles" }).click();
+    await page.getByLabel("Tile height").fill("420");
+    await page.getByLabel("Tile width").fill("330");
+    await page.getByLabel("Overlap (mm)", { exact: true }).fill("70");
+    await page.getByLabel("Side overlap").fill("30");
+
+    await page.locator("ol").getByRole("button", { name: "Panels" }).click();
+    await expect(page.getByText("Enter the tile height.")).toBeHidden();
+    await expect(page.getByText("0 panels, 0.00 kWp")).toBeVisible();
+    const box = (await page.locator("svg.touch-none").boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await expect(page.getByText("1 panels, 0.44 kWp")).toBeVisible();
+
+    await page.mouse.click(box.x + 8, box.y + 8);
+    await expect(page.getByText("Click inside the roof outline.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Automatic" }).click();
+    await expect(page.getByText(/^[1-9]\d* panels, /)).toBeVisible();
+  });
+
+  test("a blank count says so in the panel step", async ({ page }) => {
+    await page.getByRole("button", { name: "Try a sample roof" }).click();
+    await expect(page.getByLabel("Tiles high")).toHaveValue("22", { timeout: 20_000 });
+    await page.getByLabel("Tiles high").fill("");
+    await page.locator("ol").getByRole("button", { name: "Panels" }).click();
+    await expect(page.getByText("Enter the tiles high and wide first.")).toBeVisible();
+    await page.getByRole("button", { name: "Go to Roof edges" }).click();
+    await expect(page.getByLabel("Tiles high")).toBeVisible();
+  });
+
   test("the automatic layout can be edited, and counts only leaves panels out", async ({ page }) => {
     await page.getByRole("button", { name: "Try a sample roof" }).click();
     await expect(page.getByLabel("Tiles high")).toHaveValue("22", { timeout: 20_000 });
@@ -341,7 +381,7 @@ test.describe("roof tile count", () => {
     await upload(page, "roof.png", "image/png", await toFile(roofPhoto(), "png"));
     await dragCornersTo(page, CORNERS);
     await fillTileSize(page);
-    await page.getByLabel("Overlap", { exact: true }).fill("");
+    await page.getByLabel("Overlap (mm)", { exact: true }).fill("");
     await expect(page.getByText("Enter the overlap, or the row spacing.")).toBeVisible();
     await page.getByRole("button", { name: "Export", exact: true }).click();
     await expect(page.getByRole("button", { name: "Confirm result" })).toBeDisabled();
@@ -372,5 +412,19 @@ test.describe("roof tile count", () => {
     await expect(page.getByRole("heading", { name: "How to count a roof" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Does not solve" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Panel options" })).toBeVisible();
+  });
+
+  test("states the unit of every value, in the tool and the guide", async ({ page }) => {
+    await page.getByRole("button", { name: "Try a sample roof" }).click();
+    await expect(page.getByLabel("Tiles high")).toHaveValue("22", { timeout: 20_000 });
+    await expect(page.getByText("Whole tiles, eave to ridge.")).toBeVisible();
+    await page.getByRole("button", { name: "Tiles", exact: true }).click();
+    await expect(page.getByLabel("Tile height (mm)")).toHaveValue("420");
+    await expect(page.getByText("Batten gauge. Replaces the overlap. Example: 350.")).toBeVisible();
+
+    await page.getByRole("link", { name: "What to enter, and where to find it" }).click();
+    await expect(page.getByRole("heading", { name: "What to enter, and in which unit" })).toBeVisible();
+    await expect(page.getByText("Roof height = tiles high × exposed height.", { exact: false })).toBeVisible();
+    await page.screenshot({ path: "test-results/guide-units.png", fullPage: true });
   });
 });

@@ -115,7 +115,7 @@ describe("translations", () => {
       [GUIDE.de, GUIDE.en],
       [LANDING.de, LANDING.en],
     ]) {
-      const source = new Set(leaves(english).filter((text) => text.includes(" ")));
+      const source = new Set(leaves(english).filter((text) => text.includes(" ") && /[a-z]/i.test(text)));
       expect(leaves(german).filter((text) => source.has(text))).toEqual([]);
     }
   });

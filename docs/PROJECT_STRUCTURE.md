@@ -52,6 +52,7 @@ lib/                         pure TypeScript. No DOM, no I/O, no Math.random(), 
       dimensions.ts          tile size to metres, plausibility warnings
       panels.ts              automatic layout
       panel-plan.ts          manual layout on the tile grid
+      panel-status.ts        why panels cannot be placed, and which step fixes it
     io/                      data in and out
       upload.ts              file and folder checks
       export.ts              JSON, CSV, PDF

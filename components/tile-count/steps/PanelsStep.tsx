@@ -63,6 +63,7 @@ function PanelSettings({ planner }: { planner: PanelPlanState }) {
           onChange={(obstructionClearanceMm) => setLayout({ obstructionClearanceMm })}
         />
       </div>
+      <p className="mt-2 text-xs text-muted">{t.panels.unitHint}</p>
       {panelErrors[0] && <p className="mt-2 text-xs text-warning">{msg(panelErrors[0])}</p>}
     </>
   );
@@ -147,8 +148,8 @@ function ManualControls({ planner }: { planner: PanelPlanState }) {
 }
 
 export function PanelsStep({ workspace }: { workspace: Workspace }) {
-  const { t, number } = useLanguage();
-  const { dimensions, planner } = workspace;
+  const { t, msg, number } = useLanguage();
+  const { dimensions, planner, panelProblem } = workspace;
   const { mode, plan, recommendation } = planner;
 
   return (
@@ -165,10 +166,15 @@ export function PanelsStep({ workspace }: { workspace: Workspace }) {
       </div>
       <p className="mt-3 mb-4 text-sm text-muted">{t.panels.modes[mode].hint}</p>
 
-      {mode !== "none" && <PanelSettings planner={planner} />}
-      {mode !== "none" && !dimensions && (
-        <p className="mt-3 text-xs text-warning">{t.panels.needRoof}</p>
+      {panelProblem && (
+        <div className="mb-4 space-y-2 rounded-md border border-warning p-3">
+          <p className="text-sm text-warning">{msg(panelProblem.message)}</p>
+          <button type="button" className={BUTTON_CLASS} onClick={() => workspace.setStep(panelProblem.step)}>
+            {t.panels.goTo(t.steps[panelProblem.step])}
+          </button>
+        </div>
       )}
+      {mode !== "none" && <PanelSettings planner={planner} />}
 
       {plan && (
         <div className="mt-4 rounded-md bg-surface-raised p-3">

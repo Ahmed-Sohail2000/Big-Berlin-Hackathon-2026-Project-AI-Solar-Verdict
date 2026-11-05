@@ -146,8 +146,12 @@ export function usePanelPlan({ roof, quad, onEdit }: Input) {
 
   /** A click on the photo: removes the panel under it, or places a new one snapped to the tiles. */
   function pick(point: Point) {
+    if (!context) return;
     const tile = tilePoint(point);
-    if (!tile || !context) return;
+    if (!tile) {
+      setPlacementError("Click inside the roof outline.");
+      return;
+    }
     const hit = panelAt(manualPanels, tile, panelSpec, context.size);
     if (hit >= 0) {
       setPanels(manualPanels.filter((_, i) => i !== hit));

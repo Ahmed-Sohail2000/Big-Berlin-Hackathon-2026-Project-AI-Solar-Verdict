@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useLanguage } from "@/components/layout/LanguageProvider";
 import { GUIDE } from "@/lib/i18n/content/guide";
 
-const SECTION_IDS = ["before", "steps", "panels", "warnings", "scope", "privacy"] as const;
+const SECTION_IDS = ["before", "measure", "steps", "panels", "warnings", "scope", "privacy"] as const;
 
 function SectionHeading({ id, children }: { id: string; children: string }) {
   return (
@@ -60,6 +60,63 @@ export function GuideContent() {
           </tbody>
         </table>
       </div>
+
+      <SectionHeading id="measure">{guide.headings.measure}</SectionHeading>
+      <p className="mt-3 text-base text-muted">{guide.measureIntro}</p>
+      <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
+          <caption className="sr-only">{guide.measureCaption}</caption>
+          <thead className="bg-surface-raised">
+            <tr>
+              <th className="px-4 py-2.5 font-semibold">{guide.measureColumns.field}</th>
+              <th className="px-4 py-2.5 font-semibold">{guide.measureColumns.unit}</th>
+              <th className="px-4 py-2.5 font-semibold">{guide.measureColumns.source}</th>
+              <th className="px-4 py-2.5 font-semibold">{guide.measureColumns.example}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {guide.measureFields.map(({ field, unit, source, example }) => (
+              <tr key={field} className="border-t border-border bg-surface align-top">
+                <td className="px-4 py-2.5 font-medium">{field}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap">{unit}</td>
+                <td className="px-4 py-2.5 text-muted">{source}</td>
+                <td className="px-4 py-2.5 font-mono whitespace-nowrap">{example}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <section className="mt-4 rounded-lg border border-border bg-surface p-5">
+        <h3 className="text-base font-semibold">{guide.formulaTitle}</h3>
+        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm">
+          {guide.formulas.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p className="mt-3 text-sm text-muted">{guide.formulaNote}</p>
+      </section>
+
+      <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[32rem] border-collapse text-left text-sm">
+          <caption className="sr-only">{guide.sourcesCaption}</caption>
+          <thead className="bg-surface-raised">
+            <tr>
+              <th className="px-4 py-2.5 font-semibold">{guide.sourcesColumns.source}</th>
+              <th className="px-4 py-2.5 font-semibold">{guide.sourcesColumns.advice}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {guide.sources.map(({ source, advice }) => (
+              <tr key={source} className="border-t border-border bg-surface align-top">
+                <td className="px-4 py-2.5 font-medium">{source}</td>
+                <td className="px-4 py-2.5 text-muted">{advice}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-sm text-muted">{guide.sourcesNote}</p>
 
       <SectionHeading id="steps">{guide.headings.steps}</SectionHeading>
       <ol className="mt-4 space-y-3">

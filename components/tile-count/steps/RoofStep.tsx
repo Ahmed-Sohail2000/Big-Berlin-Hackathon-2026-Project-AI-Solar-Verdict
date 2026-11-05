@@ -27,8 +27,8 @@ export function RoofStep({ workspace }: { workspace: Workspace }) {
         </p>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <NumberField label={t.roof.tilesHigh} value={rows} onChange={setRows} />
-        <NumberField label={t.roof.tilesWide} value={columns} onChange={setColumns} />
+        <NumberField label={t.roof.tilesHigh} hint={t.roof.tilesHighHint} value={rows} onChange={setRows} />
+        <NumberField label={t.roof.tilesWide} hint={t.roof.tilesWideHint} value={columns} onChange={setColumns} />
       </div>
       <p className="mt-2 text-xs text-muted">{t.roof.gridNote}</p>
       {estimate && <p className="mt-3 text-xs text-warning">{estimate}</p>}
