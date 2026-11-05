@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 /** The browser and server promises from docs/SECURITY.md. */
 test.describe("security", () => {
   test("every page carries the security headers", async ({ request }) => {
-    for (const path of ["/", "/guide"]) {
+    for (const path of ["/", "/tool", "/guide"]) {
       const { status, headers } = await request.get(path).then((r) => ({ status: r.status(), headers: r.headers() }));
       expect(status).toBe(200);
       const csp = headers["content-security-policy"];
@@ -23,7 +23,7 @@ test.describe("security", () => {
   });
 
   test("there is no server route that accepts a file", async ({ request }) => {
-    for (const path of ["/", "/api/upload", "/api/photos"]) {
+    for (const path of ["/", "/tool", "/api/upload", "/api/photos"]) {
       const response = await request.post(path, { multipart: { photo: "x" } });
       expect([404, 405]).toContain(response.status());
     }

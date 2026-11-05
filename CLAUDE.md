@@ -9,7 +9,8 @@ security position.
 
 A solar installer's employee counts roof tiles by hand to get exact outer dimensions
 for a 2D CAD drawing, at 30 to 60 minutes per roof side. This app does that from one
-photo, in the browser:
+photo, in the browser. `/` explains the product in German or English and leads to the tool at
+`/tool`; `/guide` is the user guide.
 
 1. **Intake.** A photo or customer folder is screened (`io/upload.ts`), decoded to
    plain pixels (`browser/decode.ts`) and checked for quality.
@@ -34,11 +35,15 @@ Check these on every change:
 - **False confidence:** a wrong number with high confidence is the worst failure.
   A low-confidence count must stay blank.
 - **Human review:** any edit after confirmation must clear `confirmed`.
-- **Privacy:** no new route, outbound request or storage. Nothing from the file
+- **Privacy:** no new route that accepts data, outbound request or storage. Nothing from the file
   except pixels reaches an export, and file names stay out of exports.
 - **Blank is not zero:** `Number("")` is 0. A required field must fail when blank.
 - **Purity:** `lib/tile-count/` has no DOM, I/O, `Math.random()` or `Date.now()`.
-- **Honesty:** synthetic results are never presented as real-photo accuracy.
+- **Honesty:** synthetic results are never presented as real-photo accuracy, in
+  either language.
+- **Language:** new copy goes in `lib/i18n/` in both languages. Switching language
+  changes no value and never clears `confirmed`. JSON, CSV and DXF stay in one stable
+  format; only the PDF follows the language.
 
 ## Key modules
 
@@ -48,16 +53,19 @@ Check these on every change:
 - `lib/tile-count/io/dxf.ts`: true-scale CAD drawing.
 - `lib/tile-count/testing/synthetic-roof.ts`: known-answer roofs.
 - `components/tile-count/state/`: all client state and actions.
+- `components/layout/LanguageProvider.tsx` + `lib/i18n/`: language choice and all copy.
 - `middleware.ts` + `lib/auth/`: password gate and login throttle.
 
 ## Testing
 
 - Unit tests run under Vitest with `happy-dom`. A file that needs `sharp` sets
   `// @vitest-environment node`.
+- `lib/i18n/__tests__/i18n.test.ts` scans the source for sentences without German.
 - Playwright defaults to `http://localhost:3000`. With a production server, pass
   `APP_USERNAME` and `APP_PASSWORD`, which also configure its HTTP credentials. In
   production the password must be at least 12 characters.
 - Tests start from a dark system theme, because an unset theme follows the OS.
+- The tool is at `/tool`. Playwright's `en-US` browser gets English by default.
 - `e2e/fixtures/roof.heic` is synthetic and is the only photo allowed in git.
 
 ## Claude Code tooling

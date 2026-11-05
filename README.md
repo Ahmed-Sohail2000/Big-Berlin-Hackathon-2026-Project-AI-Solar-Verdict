@@ -6,7 +6,8 @@ tiles by hand.
 
 Add a photo or a customer folder, correct the roof corners, enter the tile size, mark
 obstructions, choose how far to plan panels, confirm, and export to DXF, PDF, PNG, CSV
-or JSON. Photos are processed in the browser and never uploaded.
+or JSON. Photos are processed in the browser and never uploaded. The app is available
+in German and English: a saved choice wins, otherwise it follows the browser.
 
 ## Run it
 
@@ -15,7 +16,8 @@ pnpm install
 pnpm dev        # http://localhost:3000
 ```
 
-Try the built-in sample roof, or see `/guide` for the full user guide.
+`/` explains the product, `/tool` is the tool and `/guide` is the full user guide. Try
+the built-in sample roof to walk through every step.
 
 ## Production
 

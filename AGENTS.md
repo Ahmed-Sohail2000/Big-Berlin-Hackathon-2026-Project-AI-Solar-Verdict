@@ -27,7 +27,10 @@ An earlier quoting app was removed from this branch. It remains in git history o
 6. **Colours come from the tokens in `app/globals.css`,** defined for both themes. No
    hard-coded page colours, gradients, purple or `rounded-full`; 8px radius at most.
    Overlay colours on the photo are fixed in both themes.
-7. **All UI copy is English.**
+7. **All UI copy exists in English and German, and lives in `lib/i18n/`.** A new label
+   needs both. A new sentence from `lib/tile-count/` or the workspace state stays
+   English in the code and gets its German in `lib/i18n/messages.ts`; a test fails if
+   it does not. Decide nothing from translated text.
 8. **Never commit credentials, customer photos or the client briefing.**
 
 ## Commands

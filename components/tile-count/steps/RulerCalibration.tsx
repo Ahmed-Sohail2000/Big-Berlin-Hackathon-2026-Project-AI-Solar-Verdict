@@ -1,19 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useLanguage } from "@/components/layout/LanguageProvider";
 import { measureWithRuler } from "@/lib/tile-count/planning/dimensions";
 import type { Point } from "@/lib/tile-count/types";
 import { decodePhoto } from "../browser/decode";
 import { NumberField } from "../ui/fields";
-
-const STEPS = [
-  "Click the start of the ruler section",
-  "Click the end of the ruler section",
-  "Click the top edge of the tile",
-  "Click the bottom edge of the tile",
-  "Click the left edge of the tile",
-  "Click the right edge of the tile",
-];
 
 interface Props {
   onMeasured: (heightMm: number, widthMm: number) => void;
@@ -24,6 +16,8 @@ interface Props {
  * marks; the app does the scaling. It does not read the ruler by itself.
  */
 export function RulerCalibration({ onMeasured }: Props) {
+  const { t, msg } = useLanguage();
+  const steps = t.ruler.steps;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [photo, setPhoto] = useState<HTMLCanvasElement | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
@@ -54,7 +48,7 @@ export function RulerCalibration({ onMeasured }: Props) {
   }
 
   function addPoint(event: MouseEvent<HTMLCanvasElement>) {
-    if (!photo || points.length >= STEPS.length) return;
+    if (!photo || points.length >= steps.length) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const next = [
       ...points,
@@ -64,13 +58,13 @@ export function RulerCalibration({ onMeasured }: Props) {
       },
     ];
     setPoints(next);
-    if (next.length < STEPS.length) return;
+    if (next.length < steps.length) return;
 
     const [rulerStart, rulerEnd, top, bottom, left, right] = next;
     const length = Number(rulerMm);
     const height = measureWithRuler(rulerStart, rulerEnd, length, top, bottom);
     const width = measureWithRuler(rulerStart, rulerEnd, length, left, right);
-    if (height === null || width === null) setError("Check the ruler section length, then start again.");
+    if (height === null || width === null) setError(t.ruler.badLength);
     else onMeasured(height, width);
   }
 
@@ -79,25 +73,25 @@ export function RulerCalibration({ onMeasured }: Props) {
       <input
         type="file"
         accept=".jpg,.jpeg,.png,.heic,.heif,.pdf"
-        aria-label="Reference photo with folding ruler"
+        aria-label={t.ruler.fileInput}
         className="block w-full text-xs text-muted"
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) void load(file);
         }}
       />
-      {error && <p className="text-xs text-warning">{error}</p>}
+      {error && <p className="text-xs text-warning">{msg(error)}</p>}
       {photo && (
         <>
-          <NumberField label="Ruler section length (mm)" value={rulerMm} onChange={setRulerMm} />
+          <NumberField label={t.ruler.length} value={rulerMm} onChange={setRulerMm} />
           <p className="text-xs text-accent">
-            {points.length < STEPS.length ? STEPS[points.length] : "Done. The tile size has been filled in."}
+            {points.length < steps.length ? steps[points.length] : t.ruler.done}
           </p>
           <canvas
             ref={canvasRef}
             onClick={addPoint}
             className="h-auto w-full cursor-crosshair rounded-md border border-border"
-            aria-label="Reference photo. Click the points described above."
+            aria-label={t.ruler.photo}
           />
           <button
             type="button"
@@ -107,7 +101,7 @@ export function RulerCalibration({ onMeasured }: Props) {
               setError(null);
             }}
           >
-            Start again
+            {t.ruler.again}
           </button>
         </>
       )}

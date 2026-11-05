@@ -2,6 +2,9 @@
 // Confirmed results as JSON, CSV and a one-page PDF for the CAD workflow.
 // PURE, DETERMINISTIC, no I/O: the caller supplies the timestamp and the image.
 
+import { DICTIONARIES } from "../../i18n/dictionary";
+import { formatNumber, type Language } from "../../i18n/language";
+import { translateMessage } from "../../i18n/messages";
 import { computeDimensions } from "../planning/dimensions";
 import { describeObstruction } from "../vision/obstructions";
 import type { PanelPlan } from "../planning/panel-plan";
@@ -101,25 +104,32 @@ function latin1Bytes(text: string): Uint8Array {
   return bytes;
 }
 
-function panelLines({ panels }: TileReport): string[] {
+function panelLines({ panels }: TileReport, language: Language): string[] {
   if (!panels) return [];
   const { spec, plan } = panels;
-  const source = plan.mode === "manual" ? "placed by the employee" : "planning proposal";
-  return [`Panels: ${plan.count} x ${spec.name}, ${plan.orientation}, ${plan.systemKwp.toFixed(2)} kWp (${source})`];
+  const text = DICTIONARIES[language].report;
+  const kwp = formatNumber(plan.systemKwp, language, 2);
+  const name = translateMessage(spec.name, language);
+  return [text.panels(plan.count, name, text.orientation[plan.orientation], kwp, plan.mode === "manual")];
 }
 
-function reportLines(report: TileReport): string[] {
+function reportLines(report: TileReport, language: Language): string[] {
   const d = computeDimensions(report.rows, report.columns, report.tileSize);
+  const { report: text, obstructions } = DICTIONARIES[language];
+  const metres = (value: number) => formatNumber(value, language, 2);
+  const millimetres = (value: number) => formatNumber(value, language);
   return [
-    `Case: ${report.caseReference || "-"}    Surface: ${report.roofSurface || "-"}`,
-    `Generated: ${report.generatedAt}`,
-    `Tiles: ${report.rows} high, ${report.columns} wide`,
-    `Outer dimensions: ${d.heightM.toFixed(2)} m high, ${d.widthM.toFixed(2)} m wide (${d.areaM2.toFixed(2)} m2)`,
-    `Tile: exposed height ${d.exposedHeightMm} mm, cover width ${d.coverWidthMm} mm`,
-    `Confidence: ${report.confidence}${report.correctedByEmployee ? " (count corrected by employee)" : ""}`,
-    ...report.obstructions.map((o) => `${o.kind.replace(/_/g, " ")}: ${describeObstruction(o)}`),
-    ...panelLines(report),
-    ...report.warnings.map((w) => `Warning: ${w}`),
+    text.case(report.caseReference || "-", report.roofSurface || "-"),
+    text.generated(report.generatedAt),
+    text.tiles(report.rows, report.columns),
+    text.outer(metres(d.heightM), metres(d.widthM), metres(d.areaM2)),
+    text.tile(millimetres(d.exposedHeightMm), millimetres(d.coverWidthMm)),
+    text.confidence(report.confidence, report.correctedByEmployee),
+    ...report.obstructions.map(
+      (o) => `${obstructions.kinds[o.kind]}: ${translateMessage(describeObstruction(o), language)}`,
+    ),
+    ...panelLines(report, language),
+    ...report.warnings.map((w) => text.warning(translateMessage(w, language))),
   ];
 }
 
@@ -133,11 +143,12 @@ export function toPdf(
   jpeg: Uint8Array,
   imageWidth: number,
   imageHeight: number,
+  language: Language = "en",
 ): Uint8Array {
   const pageWidth = 595;
   const pageHeight = 842;
   const margin = 40;
-  const lines = reportLines(report).slice(0, MAX_PDF_LINES);
+  const lines = reportLines(report, language).slice(0, MAX_PDF_LINES);
   const textTop = pageHeight - margin - 22;
   const textBottom = textTop - 16 - lines.length * 13;
 
@@ -149,7 +160,7 @@ export function toPdf(
 
   const text = [
     "BT",
-    `/F1 14 Tf ${margin} ${textTop} Td (Roof tile count) Tj`,
+    `/F1 14 Tf ${margin} ${textTop} Td (${pdfText(DICTIONARIES[language].report.title)}) Tj`,
     "/F1 9 Tf 0 -18 Td 13 TL",
     ...lines.map((line) => `(${pdfText(line)}) Tj T*`),
     "ET",

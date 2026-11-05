@@ -10,7 +10,9 @@ pnpm dev
 ```
 
 Wait for `http://localhost:3000` to answer, and make sure port 3000 is free first.
-Use the "Try a sample roof" button to exercise every step without a real photo.
+The tool is at `/tool`. Use the "Try a sample roof" button there to exercise every step
+without a real photo. `pnpm build` and a running `pnpm dev` share `.next`, so stop the dev
+server first and check that port 3000 is free.
 
 To check a production build, run `pnpm build`, then start it with temporary
 credentials and point Playwright at it:

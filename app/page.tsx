@@ -1,5 +1,5 @@
-import { TileCountWorkspace } from "@/components/tile-count/TileCountWorkspace";
+import { LandingPage } from "@/components/landing/LandingPage";
 
 export default function HomePage() {
-  return <TileCountWorkspace />;
+  return <LandingPage />;
 }

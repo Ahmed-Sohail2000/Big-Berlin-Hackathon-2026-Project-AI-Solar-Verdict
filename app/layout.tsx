@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { cookies, headers } from "next/headers";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { LanguageProvider } from "@/components/layout/LanguageProvider";
+import { WorkspaceProvider } from "@/components/tile-count/state/WorkspaceProvider";
+import { LANGUAGE_COOKIE, resolveLanguage } from "@/lib/i18n/language";
 import "./globals.css";
 
 /** Built for engineering documents: clear at reading size, and figures that line up. */
@@ -30,15 +34,24 @@ export const viewport: Viewport = {
 /** Runs before first paint so a saved light theme never flashes dark. */
 const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(!t&&matchMedia("(prefers-color-scheme: light)").matches)t="light";if(t==="light")document.documentElement.dataset.theme="light"}catch(e){}`;
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const language = resolveLanguage(
+    (await cookies()).get(LANGUAGE_COOKIE)?.value,
+    (await headers()).get("accept-language"),
+  );
+
   return (
-    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`} suppressHydrationWarning>
+    <html lang={language} className={`${plexSans.variable} ${plexMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="antialiased">
-        <AppHeader />
-        {children}
+        <LanguageProvider initial={language}>
+          <WorkspaceProvider>
+            <AppHeader />
+            {children}
+          </WorkspaceProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

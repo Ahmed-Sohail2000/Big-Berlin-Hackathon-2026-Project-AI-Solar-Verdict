@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { LineSegment } from "@/lib/tile-count/vision/grid";
+import { useLanguage } from "@/components/layout/LanguageProvider";
 import type { Point, Quad } from "@/lib/tile-count/types";
 
-const CORNER_LABELS = ["Top left", "Top right", "Bottom right", "Bottom left"];
 /** Magnifier size on screen, and the photo pixels it shows. */
 const LOUPE_SIZE_PX = 176;
 const LOUPE_SOURCE_PX = 44;
@@ -57,6 +57,7 @@ function pointList(points: Point[]): string {
 
 /** Photo with the roof outline, grid, panels and movable corners, plus a magnifier for exact placement. */
 export function RoofOverlay({ photo, quad, grid, obstructions, panels, ghost, tool, onQuadChange, onQuadCommit }: Props) {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const loupeRef = useRef<HTMLCanvasElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -134,7 +135,7 @@ export function RoofOverlay({ photo, quad, grid, obstructions, panels, ghost, to
 
   return (
     <div className="relative w-full overflow-hidden rounded-lg border border-border">
-      <canvas ref={canvasRef} className="block h-auto w-full" aria-label="Roof photo" />
+      <canvas ref={canvasRef} className="block h-auto w-full" aria-label={t.overlay.photo} />
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
@@ -212,10 +213,10 @@ export function RoofOverlay({ photo, quad, grid, obstructions, panels, ghost, to
         ))}
         {quad.map((corner, index) => (
           <rect
-            key={CORNER_LABELS[index]}
+            key={index}
             role="slider"
             tabIndex={0}
-            aria-label={`${CORNER_LABELS[index]} roof corner. Arrow keys move it.`}
+            aria-label={t.overlay.corner(t.overlay.corners[index])}
             aria-valuenow={Math.round(corner.x)}
             x={corner.x - handleSize / 2}
             y={corner.y - handleSize / 2}

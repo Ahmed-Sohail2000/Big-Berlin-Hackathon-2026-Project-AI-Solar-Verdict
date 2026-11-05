@@ -6,6 +6,7 @@ import { heuristicRoofDetector } from "@/lib/tile-count/vision/detect-roof";
 import { computeDimensions, tileSizeWarnings, validateTileSize } from "@/lib/tile-count/planning/dimensions";
 import { toDxf } from "@/lib/tile-count/io/dxf";
 import { toCsv, toJson, toPdf, type TileReport } from "@/lib/tile-count/io/export";
+import type { Language } from "@/lib/i18n/language";
 import { gridLines, obstructionOutline, tileAt, tileRectOutline, type TilePosition } from "@/lib/tile-count/vision/grid";
 import { isValidQuad } from "@/lib/tile-count/vision/homography";
 import { proposeObstructions, validateObstruction } from "@/lib/tile-count/vision/obstructions";
@@ -28,16 +29,9 @@ import { filesFromDrop, screenFiles, type QueueItem } from "../browser/folder";
 import { renderSamplePhoto, SAMPLE_CORNERS } from "../browser/sample";
 import { usePanelPlan } from "./usePanelPlan";
 
-export const STEPS = [
-  { id: "photo", label: "Photo" },
-  { id: "roof", label: "Roof edges" },
-  { id: "tiles", label: "Tiles" },
-  { id: "obstructions", label: "Obstructions" },
-  { id: "panels", label: "Panels" },
-  { id: "export", label: "Export" },
-] as const;
+export const STEPS = ["photo", "roof", "tiles", "obstructions", "panels", "export"] as const;
 
-export type StepId = (typeof STEPS)[number]["id"];
+export type StepId = (typeof STEPS)[number];
 export type ExportFormat = "pdf" | "png" | "dxf" | "csv" | "json";
 
 interface Photo {
@@ -360,7 +354,7 @@ export function useWorkspace() {
     };
   }
 
-  async function exportAs(format: ExportFormat) {
+  async function exportAs(format: ExportFormat, language: Language) {
     const report = buildReport();
     if (!report || !photo) return;
     const baseName = `tile-count-${(caseReference || "roof").replace(/[^\w-]+/g, "-")}`;
@@ -389,7 +383,7 @@ export function useWorkspace() {
       return;
     }
     const jpeg = new Uint8Array(await (await canvasToBlob(canvas, "image/jpeg")).arrayBuffer());
-    const pdf = toPdf(report, jpeg, canvas.width, canvas.height);
+    const pdf = toPdf(report, jpeg, canvas.width, canvas.height, language);
     downloadBlob(new Blob([pdf.slice()], { type: "application/pdf" }), `${baseName}.pdf`);
   }
 

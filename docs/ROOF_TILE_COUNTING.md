@@ -131,6 +131,8 @@ pipeline, `RoofDetector` swaps in a model, and `io/` takes new CAD formats.
 - [x] Folder intake with per-file checks (§7 "reading from a folder")
 - [x] Real HEIC file decoded in a production build (synthetic roof, real container)
 - [x] Login lockout and minimum password length
+- [x] German and English interface, home page explaining the product, tool at `/tool`
+- [ ] **German copy reviewed by a native speaker or the client** (trade terms especially)
 - [ ] **Accuracy report on the client's photos** (needs photos and manual counts)
 - [ ] **Agreed tolerance** (client decision)
 - [ ] **2FA or SSO, roles, access logging** (only a single shared password today)

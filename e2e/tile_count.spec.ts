@@ -73,7 +73,7 @@ test.describe("roof tile count", () => {
 
   test.beforeEach(async ({ page }) => {
     test.setTimeout(120_000);
-    await page.goto("/");
+    await page.goto("/tool");
   });
 
   test("runs the whole flow to export without sending anything anywhere", async ({ page }) => {

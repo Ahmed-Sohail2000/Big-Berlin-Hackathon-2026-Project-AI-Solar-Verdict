@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import { Check, FolderOpen, Grid3x3, ImageUp, Loader2, RotateCcw, Sparkles, SunMedium, Upload } from "lucide-react";
+import { useLanguage } from "@/components/layout/LanguageProvider";
 import { BUTTON_CLASS } from "./ui/fields";
 import { RoofOverlay, type OverlayTool } from "./overlay/RoofOverlay";
 import { ExportStep } from "./steps/ExportStep";
@@ -10,24 +11,26 @@ import { PanelsStep } from "./steps/PanelsStep";
 import { PhotoStep } from "./steps/PhotoStep";
 import { RoofStep } from "./steps/RoofStep";
 import { TilesStep } from "./steps/TilesStep";
-import { STEPS, useWorkspace, type Workspace } from "./state/useWorkspace";
+import { STEPS, type Workspace } from "./state/useWorkspace";
+import { useSharedWorkspace } from "./state/WorkspaceProvider";
 
 const ACCEPTED_FILES = ".jpg,.jpeg,.png,.heic,.heif,.pdf";
 
 function Stepper({ workspace }: { workspace: Workspace }) {
-  const current = STEPS.findIndex((s) => s.id === workspace.step);
+  const { t } = useLanguage();
+  const current = STEPS.indexOf(workspace.step);
   return (
     <ol className="flex flex-wrap gap-1 border-b border-border bg-surface px-5 py-2">
       {STEPS.map((step, index) => {
         const reachable = index === 0 || workspace.photo !== null;
         const done = index < current;
         return (
-          <li key={step.id}>
+          <li key={step}>
             <button
               type="button"
               disabled={!reachable}
               aria-current={index === current ? "step" : undefined}
-              onClick={() => workspace.setStep(step.id)}
+              onClick={() => workspace.setStep(step)}
               className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 index === current ? "bg-surface-raised text-foreground" : "text-muted hover:text-foreground"
               }`}
@@ -44,7 +47,7 @@ function Stepper({ workspace }: { workspace: Workspace }) {
               >
                 {done ? <Check className="h-3.5 w-3.5" /> : index + 1}
               </span>
-              {step.label}
+              {t.steps[step]}
             </button>
           </li>
         );
@@ -54,6 +57,7 @@ function Stepper({ workspace }: { workspace: Workspace }) {
 }
 
 function Dropzone({ workspace }: { workspace: Workspace }) {
+  const { t, msg } = useLanguage();
   const [hovering, setHovering] = useState(false);
 
   function drop(event: DragEvent) {
@@ -80,30 +84,28 @@ function Dropzone({ workspace }: { workspace: Workspace }) {
       }`}
     >
       <Upload className="h-9 w-9 text-accent" aria-hidden />
-      <p className="text-lg font-semibold">Drop a roof photo or a customer folder here</p>
-      <p className="max-w-md text-sm text-muted">
-        JPEG, PNG, HEIC or PDF, up to 30 MB each. One photo per roof surface. Files stay on this device.
-      </p>
+      <p className="text-lg font-semibold">{t.drop.title}</p>
+      <p className="max-w-md text-sm text-muted">{t.drop.formats}</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         <label className={`${BUTTON_CLASS} cursor-pointer`}>
           <ImageUp className="h-4 w-4" aria-hidden />
-          Choose photos
+          {t.drop.choosePhotos}
           <input
             type="file"
             multiple
             accept={ACCEPTED_FILES}
-            aria-label="Roof photo"
+            aria-label={t.drop.photoInput}
             className="sr-only"
             onChange={choose}
           />
         </label>
         <label className={`${BUTTON_CLASS} cursor-pointer`}>
           <FolderOpen className="h-4 w-4" aria-hidden />
-          Choose folder
+          {t.drop.chooseFolder}
           <input
             type="file"
             multiple
-            aria-label="Customer folder"
+            aria-label={t.drop.folderInput}
             className="sr-only"
             onChange={choose}
             {...{ webkitdirectory: "" }}
@@ -111,11 +113,11 @@ function Dropzone({ workspace }: { workspace: Workspace }) {
         </label>
         <button type="button" className={BUTTON_CLASS} onClick={workspace.loadSample}>
           <Sparkles className="h-4 w-4" aria-hidden />
-          Try a sample roof
+          {t.drop.sample}
         </button>
       </div>
-      {workspace.busy && <p className="text-sm text-muted">Reading the files</p>}
-      {workspace.error && <p className="text-sm text-warning">{workspace.error}</p>}
+      {workspace.busy && <p className="text-sm text-muted">{t.drop.reading}</p>}
+      {workspace.error && <p className="text-sm text-warning">{msg(workspace.error)}</p>}
     </div>
   );
 }
@@ -145,16 +147,17 @@ function Toggle({ label, icon, on, onClick }: ToggleProps) {
 
 /** Running totals, so the employee sees the effect of every edit in any step. */
 function Summary({ workspace }: { workspace: Workspace }) {
+  const { t, number } = useLanguage();
   const { rowCount, columnCount, dimensions } = workspace;
   const { plan } = workspace.planner;
   const items = [
-    { label: "Tiles", value: rowCount && columnCount ? `${rowCount} × ${columnCount}` : "–" },
+    { label: t.summary.tiles, value: rowCount && columnCount ? `${rowCount} × ${columnCount}` : "–" },
     {
-      label: "Roof",
-      value: dimensions ? `${dimensions.heightM.toFixed(2)} × ${dimensions.widthM.toFixed(2)} m` : "–",
+      label: t.summary.roof,
+      value: dimensions ? `${number(dimensions.heightM, 2)} × ${number(dimensions.widthM, 2)} m` : "–",
     },
-    { label: "Panels", value: plan ? String(plan.count) : "–" },
-    { label: "Power", value: plan ? `${plan.systemKwp.toFixed(2)} kWp` : "–" },
+    { label: t.summary.panels, value: plan ? String(plan.count) : "–" },
+    { label: t.summary.power, value: plan ? `${number(plan.systemKwp, 2)} kWp` : "–" },
   ];
   return (
     <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
@@ -182,7 +185,8 @@ function activeTool(workspace: Workspace): OverlayTool | null {
 
 /** Guided flow: photo, roof edges, tiles, obstructions, panels, export. Runs entirely in the browser. */
 export function TileCountWorkspace() {
-  const workspace = useWorkspace();
+  const { t } = useLanguage();
+  const workspace = useSharedWorkspace();
   const { photo, quad, step, planner } = workspace;
 
   return (
@@ -194,29 +198,29 @@ export function TileCountWorkspace() {
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <Toggle
-                  label="Grid"
+                  label={t.workspace.grid}
                   icon={<Grid3x3 className="h-4 w-4" aria-hidden />}
                   on={workspace.showGrid}
                   onClick={() => workspace.setShowGrid(!workspace.showGrid)}
                 />
                 {planner.mode !== "none" && (
                   <Toggle
-                    label="Panels"
+                    label={t.workspace.panels}
                     icon={<SunMedium className="h-4 w-4" aria-hidden />}
                     on={workspace.showPanels}
                     onClick={() => workspace.setShowPanels(!workspace.showPanels)}
                   />
                 )}
-                {photo.sample && <span className="text-sm text-warning">Sample roof, not a real photo</span>}
+                {photo.sample && <span className="text-sm text-warning">{t.workspace.sampleNotice}</span>}
                 {workspace.busy && (
                   <span className="flex items-center gap-1.5 text-sm text-muted">
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    Counting
+                    {t.workspace.counting}
                   </span>
                 )}
                 <button type="button" className={`${BUTTON_CLASS} ml-auto`} onClick={workspace.startOver}>
                   <RotateCcw className="h-4 w-4" aria-hidden />
-                  Start over
+                  {t.workspace.startOver}
                 </button>
               </div>
               <RoofOverlay
